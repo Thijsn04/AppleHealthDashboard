@@ -1,0 +1,12 @@
+[theme]
+# Calm, "healthy" look
+base = "light"
+primaryColor = "#2E7D6E"           # teal
+backgroundColor = "#F6FBFA"        # very light mint
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#12312B"
+font = "sans serif"
+
+[server]
+# Keep uploads workable (Apple exports can be large). Adjust as needed.
+maxUploadSize = 1024
