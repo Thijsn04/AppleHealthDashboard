@@ -1,56 +1,70 @@
 # Apple Health Dashboard
-- Add timezone-aware filtering and weekly/monthly rollups.
-- Add more metrics and correlation insights.
-- Cache/import parsed data to a local SQLite database for fast reloads.
-## Next steps
 
-- `tests/` — unit tests
-- `apple_health_dashboard/` — reusable library code
-- `app.py` — Streamlit entrypoint
-## Project layout
+Lokale dashboard-app om je Apple Health export te analyseren.
 
-```
-ruff check .
+## Belangrijk: 100% lokaal
+- Je data wordt **niet** naar een cloud geüpload.
+- Uploads worden tijdelijk opgeslagen in `./.tmp/`.
+- De app importeert data naar een lokale SQLite database: `./health.db`.
+- Deze bestanden staan in `.gitignore` zodat je ze niet per ongeluk commit.
+
+## Apple Health export maken
+Op je iPhone:
+1. Open **Gezondheid**
+2. Tik op je **profiel** (rechtsboven)
+3. Kies **Exporteer alle gezondheidsgegevens**
+
+Je krijgt een `.zip` met (meestal) `apple_health_export/export.xml`.
+
+## 5 minuten quickstart (Windows / PowerShell)
+1) Ga naar de projectmap:
+
 ```powershell
-
-Run lint:
-
+cd "C:\Users\thijs\PycharmProjects\AppleHealthDashboard"
 ```
-pytest
+
+2) Installeer dependencies:
+
 ```powershell
-
-Run tests:
-## Development
-
-This app is designed to run locally. Your export can contain sensitive health data.
-## Notes & privacy
-
-- `app.py` is a Streamlit UI that calls the ingest + services layers.
-- `apple_health_dashboard/services/` builds pandas dataframes + summary stats.
-- `apple_health_dashboard/ingest/` handles reading Apple’s `export.xml`.
-## How it works (high level)
-
-Then open the URL Streamlit prints.
-
-```
-streamlit run app.py
-python -m pip install -e .
 python -m pip install -U pip
+python -m pip install -e ".[dev]"
+```
+
+3) Start de dashboard:
+
 ```powershell
+python -m streamlit run app.py
+```
 
-3) Run the dashboard.
-2) Install dependencies.
-1) Create/activate a virtual env.
-## Quickstart
+4) In de app:
+- Upload `export.zip` of `export.xml`
+- Klik **Import naar database**
 
-You’ll get a zip with a folder like `apple_health_export/` that contains `export.xml`.
-On iPhone: **Health** → your profile picture → **Export All Health Data**.
-## Getting your Apple Health export
+## Reset / data verwijderen
+In de app kun je lokaal opgeslagen data verwijderen via de knop **Delete local data**.
+Dat verwijdert `health.db` en `./.tmp/`.
 
-- Shows an interactive dashboard (steps, heart rate, sleep, workouts — and more later).
-- Parses the data locally (no cloud upload).
-- Lets you upload an Apple Health export (`export.xml` or the full `export.zip`).
-## What this project does
+## Project layout
+- `app.py` — Streamlit UI
+- `apple_health_dashboard/ingest/` — streaming parsers + importer
+- `apple_health_dashboard/storage/` — SQLite schema + read/write helpers
+- `apple_health_dashboard/services/` — aggregaties (pandas)
+- `tests/` — unit tests
 
-Local dashboard for exploring your exported Apple Health data.
+## Development
+Tests:
 
+```powershell
+python -m pytest
+```
+
+Lint:
+
+```powershell
+python -m ruff check .
+```
+
+## Troubleshooting
+- **streamlit niet gevonden**: gebruik `python -m streamlit run app.py`
+- **Import is traag**: grote exports kunnen enkele minuten duren (zeker bij 1e import)
+- **Geen data zichtbaar**: klik eerst op **Import naar database** en daarna op refresh

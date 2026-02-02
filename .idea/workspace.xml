@@ -5,27 +5,32 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="522fb729-7560-4f24-9585-329fc6651d04" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.agent.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.ask.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.ask2agent.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/copilot.data.migration.edit.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.streamlit/config.toml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/ingest/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/ingest/apple_health.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/services/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/services/stats.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/web/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/web/ui.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/export.zip" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_datetime_parse.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/test_parser_small_xml.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/db.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/ingest/apple_health_activity_summary.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/ingest/apple_health_records.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/ingest/apple_health_workouts.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/ingest/importer.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/local_data.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/logging_config.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/services/activity_summary.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/services/filters.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/services/metrics.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/services/records_view.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/services/sleep.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/services/units.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/services/workouts.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/storage/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/storage/sqlite_store.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apple_health_dashboard/web/explore.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_activity_summary_parser.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_record_metadata_parser.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_summarize_by_day_agg_defensive.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/apple_health_dashboard/services/stats.py" beforeDir="false" afterPath="$PROJECT_DIR$/apple_health_dashboard/services/stats.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/apple_health_dashboard/web/ui.py" beforeDir="false" afterPath="$PROJECT_DIR$/apple_health_dashboard/web/ui.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -99,7 +104,7 @@
       <option name="presentableId" value="Default" />
       <updated>1770065343486</updated>
       <workItem from="1770065344508" duration="129000" />
-      <workItem from="1770065492331" duration="934000" />
+      <workItem from="1770065492331" duration="4745000" />
     </task>
     <servers />
   </component>

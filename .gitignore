@@ -46,6 +46,11 @@ export.zip
 export.xml
 apple_health_export/
 .tmp/
+health.db
+
+# Local logs
+app.log
+.tmp/app.log
 
 # --- OS ---
 .DS_Store
