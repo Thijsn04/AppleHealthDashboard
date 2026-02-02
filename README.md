@@ -1,70 +1,71 @@
 # Apple Health Dashboard
 
-Lokale dashboard-app om je Apple Health export te analyseren.
+A local, privacy-first dashboard to explore your Apple Health export.
 
-## Belangrijk: 100% lokaal
-- Je data wordt **niet** naar een cloud geüpload.
-- Uploads worden tijdelijk opgeslagen in `./.tmp/`.
-- De app importeert data naar een lokale SQLite database: `./health.db`.
-- Deze bestanden staan in `.gitignore` zodat je ze niet per ongeluk commit.
+## Privacy (100% local)
+- Your data is **never** uploaded to a cloud.
+- Uploads are stored temporarily in `./.tmp/`.
+- The app imports data into a local SQLite database: `./health.db`.
+- These files are listed in `.gitignore` so you don’t accidentally commit them.
 
-## Apple Health export maken
-Op je iPhone:
-1. Open **Gezondheid**
-2. Tik op je **profiel** (rechtsboven)
-3. Kies **Exporteer alle gezondheidsgegevens**
+## Create an Apple Health export
+On your iPhone:
+1. Open **Health**
+2. Tap your **profile** (top-right)
+3. Choose **Export All Health Data**
 
-Je krijgt een `.zip` met (meestal) `apple_health_export/export.xml`.
+You’ll get a `.zip` that usually contains `apple_health_export/export.xml`.
 
-## 5 minuten quickstart (Windows / PowerShell)
-1) Ga naar de projectmap:
+## 5-minute quickstart (Windows / PowerShell)
+1) Go to the project folder:
 
 ```powershell
 cd "C:\Users\thijs\PycharmProjects\AppleHealthDashboard"
 ```
 
-2) Installeer dependencies:
+2) Install dependencies:
 
 ```powershell
 python -m pip install -U pip
 python -m pip install -e ".[dev]"
 ```
 
-3) Start de dashboard:
+3) Start the dashboard:
 
 ```powershell
 python -m streamlit run app.py
 ```
 
-4) In de app:
-- Upload `export.zip` of `export.xml`
-- Klik **Import naar database**
+4) In the app:
+- Upload `export.zip` or `export.xml`
+- Click **Import to database**
 
-## Reset / data verwijderen
-In de app kun je lokaal opgeslagen data verwijderen via de knop **Delete local data**.
-Dat verwijdert `health.db` en `./.tmp/`.
+## Reset / delete local data
+In the app you can delete locally stored data via **Delete local data**.
+This removes `health.db` and `./.tmp/`.
 
 ## Project layout
 - `app.py` — Streamlit UI
 - `apple_health_dashboard/ingest/` — streaming parsers + importer
 - `apple_health_dashboard/storage/` — SQLite schema + read/write helpers
-- `apple_health_dashboard/services/` — aggregaties (pandas)
+- `apple_health_dashboard/services/` — pandas aggregations
+- `apple_health_dashboard/web/` — UI helpers (styling, explore browser, i18n)
 - `tests/` — unit tests
 
 ## Development
-Tests:
+Run tests:
 
 ```powershell
 python -m pytest
 ```
 
-Lint:
+Run lint:
 
 ```powershell
 python -m ruff check .
 ```
 
 ## Troubleshooting
-- **streamlit niet gevonden**: gebruik `python -m streamlit run app.py`
-- **Import is traag**: grote exports kunnen enkele minuten duren (zeker bij 1e import)
-- **Geen data zichtbaar**: klik eerst op **Import naar database** en daarna op refresh
+- **Streamlit not found**: use `python -m streamlit run app.py`
+- **Import is slow**: large exports can take a few minutes (especially the first import)
+- **No data visible**: import first, then use refresh if needed

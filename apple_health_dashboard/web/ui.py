@@ -8,7 +8,7 @@ import streamlit as st
 @dataclass(frozen=True)
 class Brand:
     app_name: str = "Apple Health Dashboard"
-    tagline: str = "Rustig overzicht. Slimme inzichten. Alles lokaal."
+    tagline: str = "Calm overview. Smart insights. Everything local."
 
 
 DEFAULT_BRAND = Brand()

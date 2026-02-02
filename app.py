@@ -42,6 +42,7 @@ from apple_health_dashboard.storage.sqlite_store import (
     open_db,
 )
 from apple_health_dashboard.web.explore import ExploreParams, render_explore_records
+from apple_health_dashboard.web.i18n import get_copy
 from apple_health_dashboard.web.ui import Brand, apply_base_ui, info_card, stat_row
 
 logger = logging.getLogger(__name__)
@@ -150,18 +151,33 @@ def _load_record_metadata(db_path: Path, record_hash: str) -> list[tuple[str, st
 
 def main() -> None:
     configure_logging()
-    apply_base_ui(Brand())
+
+    # Language selector (EN default)
+    if "lang" not in st.session_state:
+        st.session_state["lang"] = "en"
+
+    with st.sidebar:
+        st.selectbox(
+            "Language",
+            options=["en", "nl"],
+            index=0 if st.session_state["lang"] == "en" else 1,
+            key="lang",
+        )
+
+    t = get_copy(st.session_state.get("lang", "en"))
+
+    apply_base_ui(Brand(tagline=t.app_tagline))
 
     db_path = default_db_path()
 
     # --- Sidebar: import + global controls ---
     with st.sidebar:
-        st.header("Import")
-        st.write("Upload `export.xml` of `export.zip` vanuit Apple Gezondheid.")
-        st.caption("Alles blijft lokaal op je computer.")
+        st.header(t.sidebar_import_title)
+        st.write(t.sidebar_upload_help)
+        st.caption(t.sidebar_local_caption)
 
         uploaded = st.file_uploader(
-            "Bestand",
+            "File",
             type=["xml", "zip"],
             accept_multiple_files=False,
         )
@@ -181,42 +197,39 @@ def main() -> None:
         col_a, col_b = st.columns(2)
         with col_a:
             import_clicked = st.button(
-                "Import naar database",
+                t.button_import,
                 type="primary",
                 use_container_width=True,
             )
         with col_b:
-            refresh_clicked = st.button("Refresh", use_container_width=True)
+            refresh_clicked = st.button(t.button_refresh, use_container_width=True)
 
         st.caption(f"Database: `{db_path.name}`")
 
-        with st.expander("Local data beheren", expanded=False):
-            st.write("Verwijder alle lokaal opgeslagen data (database + tijdelijke uploads).")
-            confirm = st.checkbox("Ik snap dat dit alles lokaal verwijdert")
-            if st.button("Delete local data", type="secondary", disabled=not confirm):
+        with st.expander(t.sidebar_delete_local_title, expanded=False):
+            st.write(t.sidebar_delete_local_body)
+            confirm = st.checkbox(t.sidebar_delete_local_confirm)
+            if st.button(t.sidebar_delete_local_button, type="secondary", disabled=not confirm):
                 delete_local_data()
-                st.success("Lokale data verwijderd. Start opnieuw met importeren.")
+                st.success("Local data deleted.")
                 st.rerun()
 
         st.divider()
-        st.header("Tips")
+        st.header(t.sidebar_tips_title)
         st.markdown(
-            "- Importeren hoeft maar 1x per export\n"
-            "- Daarna is de dashboard reload snel\n"
-            "- Grote exports kunnen 1–5 min duren"
+            "- Import once per export\n"
+            "- Reloads are fast after import\n"
+            "- Large exports can take 1–5 minutes"
         )
 
     # --- Top info cards ---
     info_cols = st.columns([1.2, 1, 1])
     with info_cols[0]:
-        info_card(
-            "Privacy-first",
-            "Je export wordt niet geüpload naar een cloud. We verwerken alles lokaal.",
-        )
+        info_card(t.card_privacy_title, t.card_privacy_body)
     with info_cols[1]:
-        info_card("Schaalbaar", "We importeren naar SQLite zodat reloads snel blijven.")
+        info_card(t.card_scale_title, t.card_scale_body)
     with info_cols[2]:
-        info_card("Inzicht", "Bekijk een metric, workouts, rings én ruwe data.")
+        info_card(t.card_insight_title, t.card_insight_body)
 
     st.divider()
 
@@ -272,7 +285,7 @@ def main() -> None:
 
     # Global date filter
     with st.sidebar:
-        preset = st.selectbox("Date range", ["All", "7D", "30D", "90D"], index=2)
+        preset = st.selectbox(t.filter_date_range, ["All", "7D", "30D", "90D"], index=2)
 
     preset_filter = infer_date_filter(df, preset=preset)
     if preset_filter is None:
@@ -280,13 +293,13 @@ def main() -> None:
         st.stop()
 
     with st.sidebar:
-        use_custom = st.checkbox("Custom date range", value=False)
+        use_custom = st.checkbox(t.filter_custom_date, value=False)
 
         if use_custom:
             min_d = preset_filter.start.date()
             max_d = preset_filter.end.date()
             start_d, end_d = st.date_input(
-                "Select dates",
+                t.filter_select_dates,
                 value=(min_d, max_d),
                 min_value=min_d,
                 max_value=max_d,
@@ -310,8 +323,17 @@ def main() -> None:
     filtered = df_filtered[df_filtered["type"] == metric].copy()
     filtered = normalize_units(filtered, record_type=metric)
 
-    # --- Tabs (now that state is computed) ---
-    tabs = st.tabs(["Dashboard", "Explore", "Workouts", "Rings", "Sleep", "Metadata"])
+    # --- Tabs ---
+    tabs = st.tabs(
+        [
+            t.tab_dashboard,
+            t.tab_explore,
+            t.tab_workouts,
+            t.tab_rings,
+            t.tab_sleep,
+            t.tab_metadata,
+        ]
+    )
 
     period_str = f"{date_filter.start.date().isoformat()} → {date_filter.end.date().isoformat()}"
     status_items = [
