@@ -1,0 +1,60 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Type checkers
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Jupyter / IPython
+.ipynb_checkpoints/
+
+# --- Streamlit ---
+# Streamlit secrets often contain tokens/keys. Keep config.toml tracked (theme), ignore secrets.
+.streamlit/secrets.toml
+
+# Streamlit cache (if enabled)
+.streamlit/cache/
+
+# --- Local app data / uploads ---
+# Apple Health exports can be huge and contain sensitive data.
+export.zip
+export.xml
+apple_health_export/
+.tmp/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- IDEs ---
+.idea/
+.vscode/
+
+# --- Logs ---
+*.log
