@@ -37,7 +37,7 @@ def infer_date_filter(df: pd.DataFrame, *, preset: str) -> DateFilter | None:
     if preset == "All":
         return DateFilter(start=start_at.min(), end=end)
 
-    days = {"7D": 7, "30D": 30, "90D": 90}.get(preset)
+    days = {"7D": 7, "30D": 30, "90D": 90, "180D": 180, "1Y": 365}.get(preset)
     if days is None:
         return None
 

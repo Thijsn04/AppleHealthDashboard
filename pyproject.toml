@@ -8,6 +8,7 @@ authors = [{ name = "Your Name" }]
 dependencies = [
   "streamlit>=1.31",
   "pandas>=2.1",
+  "altair>=5.0",
 ]
 
 [project.optional-dependencies]
