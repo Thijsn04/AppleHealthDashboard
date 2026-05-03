@@ -181,8 +181,12 @@ def hr_zone_distribution(df: pd.DataFrame, *, max_hr: int = 185) -> pd.DataFrame
     if hr.empty:
         return pd.DataFrame(columns=["zone", "minutes", "pct"])
 
+    # Maximum plausible duration for a single HR reading. Apple Watch typically logs HR every
+    # 1–5 minutes; a 30-minute cap prevents outlier intervals from skewing zone totals.
+    _MAX_HR_DURATION_MIN = 30
+
     hr["duration_min"] = (hr["end_at"] - hr["start_at"]).dt.total_seconds() / 60.0
-    hr["duration_min"] = hr["duration_min"].clip(lower=0, upper=30)  # cap unrealistic durations
+    hr["duration_min"] = hr["duration_min"].clip(lower=0, upper=_MAX_HR_DURATION_MIN)
 
     zone_rows = []
     for zone_name, (lo_frac, hi_frac) in HR_ZONES.items():

@@ -4,6 +4,9 @@ import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
+
+# Default target weight shown in the goal calculator when no current weight is available
+_DEFAULT_TARGET_WEIGHT_KG = 70.0
 from apple_health_dashboard.services.body import (
     bmi_category,
     bmi_trend,
@@ -341,7 +344,7 @@ with tabs[3]:
             "Target weight (kg)",
             min_value=30.0,
             max_value=300.0,
-            value=float(latest_weight) if latest_weight else 70.0,
+            value=float(latest_weight) if latest_weight else _DEFAULT_TARGET_WEIGHT_KG,
             step=0.5,
         )
         current_w = latest_weight or float(w_trend["weight_kg"].mean())

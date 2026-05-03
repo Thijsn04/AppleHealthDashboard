@@ -92,7 +92,9 @@ def sleep_duration_by_day(df: pd.DataFrame, *, stages: str = "all") -> pd.DataFr
         return pd.DataFrame(columns=["day", "hours"])
 
     valid["duration_h"] = (valid["end_at"] - valid["start_at"]).dt.total_seconds() / 3600.0
-    # Attribute sleep to the day of the *end* time (so overnight sleep belongs to morning day)
+    # Attribute sleep to the calendar day of the *end* time, not the start time.
+    # This means overnight sleep (e.g. 23:00 Jan 1 → 07:00 Jan 2) is counted as a Jan 2 night,
+    # which aligns with how people intuitively think about "last night's sleep".
     valid["day"] = valid["end_at"].dt.floor("D")
 
     out = (

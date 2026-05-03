@@ -280,11 +280,11 @@ with tabs[3]:
         st.markdown("**Monthly Summary**")
         cal_df["month_period"] = cal_df["day_dt"].dt.to_period("M").dt.start_time
         monthly = cal_df.groupby("month_period").agg(
-            workouts=("count", "sum"),
-            hours=("duration_h", "sum"),
+            total_workouts=("count", "sum"),
+            total_hours=("duration_h", "sum"),
         ).reset_index()
-        monthly.columns = ["Month", "Workouts", "Hours"]
-        monthly["Hours"] = monthly["Hours"].round(1)
+        monthly.columns = ["Month", "Workouts", "Total Hours"]
+        monthly["Total Hours"] = monthly["Total Hours"].round(1)
         st.dataframe(monthly, use_container_width=True, hide_index=True)
 
 # ── Raw Data tab ───────────────────────────────────────────────────────────────
