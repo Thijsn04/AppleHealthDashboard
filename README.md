@@ -141,7 +141,7 @@ delete_local_data()  # removes ./health.db and ./.tmp/
 | Symptom | Fix |
 |---------|-----|
 | `Streamlit not found` | Run `python -m streamlit run app.py` instead of `streamlit run app.py` |
-| Import is slow | Large exports (500 k+ records) take 2–5 minutes; a progress bar is shown |
+| Import is slow | Large exports (500k+ records) take 2–5 minutes; a progress bar is shown |
 | No data visible | Go to Home, import first, then navigate to a page |
 | No sleep stages | Detailed stages require Apple Watch Series 4+ with watchOS 9+ |
 | No VO₂ max | Requires an outdoor run or walk with Apple Watch GPS enabled |
