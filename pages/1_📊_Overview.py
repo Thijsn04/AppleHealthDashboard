@@ -9,6 +9,7 @@ from apple_health_dashboard.services.body import body_summary_stats, weight_tren
 from apple_health_dashboard.services.filters import apply_date_filter
 from apple_health_dashboard.services.heart import heart_summary_stats, resting_hr_trend
 from apple_health_dashboard.services.sleep import sleep_consistency_stats, sleep_duration_by_day, sleep_records
+from apple_health_dashboard.services.insights import generate_insights
 from apple_health_dashboard.services.stats import summarize_by_day_agg
 from apple_health_dashboard.services.streaks import daily_streak, personal_bests
 from apple_health_dashboard.services.workouts import workouts_to_dataframe
@@ -172,6 +173,39 @@ c4.metric(
     f"{weight} kg" if weight else "—",
     delta=f"BMI {bmi}" if bmi else None,
 )
+
+st.divider()
+
+# ── Auto-insights strip ───────────────────────────────────────────────────────
+st.markdown("### 💡 Key Insights")
+st.caption("Auto-detected patterns across your health data. [See full analysis →](Insights)")
+
+_insights = generate_insights(df_f, wdf_f)
+_KIND_BG = {
+    "positive": "rgba(16,185,129,0.08)",
+    "negative": "rgba(239,68,68,0.08)",
+    "neutral":  "rgba(245,158,11,0.08)",
+    "info":     "rgba(59,130,246,0.08)",
+}
+_KIND_BORDER = {
+    "positive": "#10B981",
+    "negative": "#EF4444",
+    "neutral":  "#F59E0B",
+    "info":     "#3B82F6",
+}
+_top_insights = _insights[:3]
+_cols = st.columns(len(_top_insights))
+for _col, _ins in zip(_cols, _top_insights):
+    _bg = _KIND_BG.get(_ins.get("kind", "info"), _KIND_BG["info"])
+    _border = _KIND_BORDER.get(_ins.get("kind", "info"), _KIND_BORDER["info"])
+    _col.markdown(
+        f"""<div style="background:{_bg};border-left:4px solid {_border};
+        padding:12px 14px;border-radius:10px;margin-bottom:6px;">
+        <div style="font-weight:700;margin-bottom:4px;">{_ins['icon']} {_ins['title']}</div>
+        <div style="font-size:0.85rem;opacity:0.82;">{_ins['body']}</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
 st.divider()
 
