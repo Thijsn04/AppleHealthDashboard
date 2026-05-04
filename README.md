@@ -15,6 +15,7 @@ and heart rate variability to VO₂ max, workout personal records and body compo
 | 🔥 **Rings** | Move / Exercise / Stand ring completion rates, goal tracking, all-rings streak |
 | ⚖️ **Body** | Weight trend, BMI classification, body fat %, lean mass, goal calculator |
 | 🔬 **Explorer** | Browse & filter every one of 50+ record types with paginated raw data and auto-generated daily charts |
+| 💡 **Insights** | Cross-metric analysis — daily readiness score, sleep/HRV correlations, circadian profile, correlation matrix |
 
 ## Privacy (100% local)
 
@@ -22,6 +23,11 @@ and heart rate variability to VO₂ max, workout personal records and body compo
 - Uploads are stored temporarily in `./.tmp/`.
 - Data is imported into a local SQLite database: `./health.db`.
 - Both are listed in `.gitignore`.
+
+## Requirements
+
+- Python 3.11 or newer
+- Works on macOS, Linux, and Windows
 
 ## Create an Apple Health export
 
@@ -35,10 +41,14 @@ You'll receive a `.zip` containing `apple_health_export/export.xml`.
 ## Quickstart
 
 ```bash
-# Install
+# Clone the repository
+git clone https://github.com/Thijsn04/AppleHealthDashboard.git
+cd AppleHealthDashboard
+
+# Install dependencies
 pip install -e ".[dev]"
 
-# Run
+# Run the dashboard
 python -m streamlit run app.py
 ```
 
@@ -50,7 +60,8 @@ Then:
 ## Project layout
 
 ```
-app.py                          — Home / import page
+app.py                          — Home / import page (Streamlit entry point)
+main.py                         — CLI helper (quick parse smoke-test)
 pages/
   1_📊_Overview.py              — Key metrics summary
   2_❤️_Heart.py                 — Heart health analysis
@@ -60,36 +71,82 @@ pages/
   6_🔥_Rings.py                 — Activity rings
   7_⚖️_Body.py                  — Body metrics
   8_🔬_Explorer.py              — Raw data explorer
+  9_💡_Insights.py              — Cross-metric insights & correlations
 apple_health_dashboard/
-  ingest/                       — Streaming XML parsers + importer
-  storage/                      — SQLite schema + read/write helpers
-  services/                     — Pandas aggregations & analytics
-    metrics.py                  — 50+ metric definitions
-    heart.py                    — HR, HRV, VO₂ max, BP, SpO₂
-    sleep.py                    — Sleep stages & consistency
-    body.py                     — Weight, BMI, body fat
-    streaks.py                  — Streaks & personal records
-    workouts.py                 — Workout aggregations & PRs
+  db.py                         — Default database path helper
+  local_data.py                 — Local data cleanup utilities
+  logging_config.py             — Logging setup (console + file)
+  ingest/
+    apple_health.py             — Core HealthRecord dataclass & XML loader
+    apple_health_records.py     — Streaming record parser
+    apple_health_workouts.py    — Streaming workout parser
+    apple_health_activity_summary.py — Activity summary (rings) parser
+    importer.py                 — Orchestrates full import into SQLite
+  storage/
+    sqlite_store.py             — SQLite schema, read helpers & upsert writers
+  services/
+    metrics.py                  — 50+ MetricSpec definitions with labels & units
+    heart.py                    — HR, HRV, VO₂ max, BP, SpO₂ aggregations
+    sleep.py                    — Sleep stages & consistency analytics
+    body.py                     — Weight, BMI, body fat computations
+    activity_summary.py         — Activity ring aggregations
+    workouts.py                 — Workout aggregations & personal records
+    streaks.py                  — Streaks & personal-best helpers
+    insights.py                 — Cross-metric analysis & readiness score
+    stats.py                    — Low-level record-to-DataFrame helpers
+    filters.py                  — Date filtering utilities
+    records_view.py             — Record view helpers for Explorer
+    units.py                    — Unit conversion helpers
   web/
-    charts.py                   — Altair chart builders
-    page_utils.py               — Shared sidebar & helpers
-tests/                          — Unit tests (31 tests)
+    charts.py                   — Altair chart builders (area, line, bar, etc.)
+    page_utils.py               — Shared sidebar, date filter & data loading
+    ui.py                       — Base UI helpers (cards, branding)
+    explore.py                  — Explorer page helpers
+    i18n.py                     — Internationalisation / label helpers
+tests/                          — Unit tests (pytest)
 ```
 
 ## Development
 
 ```bash
-# Tests
+# Run tests
 python -m pytest
 
 # Lint
 python -m ruff check .
+
+# Auto-fix lint issues
+python -m ruff check . --fix
+```
+
+### CLI smoke-test
+
+A small CLI helper is included for quickly verifying that an export file can be parsed without starting the full Streamlit server:
+
+```bash
+python main.py path/to/export.xml
+```
+
+### Deleting local data
+
+All locally stored data (database + temporary files) can be deleted from the Home page via the **🗑️ Delete local data** expander in the sidebar, or programmatically:
+
+```python
+from apple_health_dashboard.local_data import delete_local_data
+delete_local_data()  # removes ./health.db and ./.tmp/
 ```
 
 ## Troubleshooting
 
-- **Streamlit not found**: use `python -m streamlit run app.py`
-- **Import is slow**: large exports (500k+ records) take 2–5 minutes; progress is shown
-- **No data visible**: go to Home, import first, then navigate to a page
-- **No sleep stages**: detailed stages require Apple Watch Series 4+ with watchOS 9+
-- **No VO₂ max**: requires outdoor run or walk with Apple Watch GPS enabled
+| Symptom | Fix |
+|---------|-----|
+| `Streamlit not found` | Run `python -m streamlit run app.py` instead of `streamlit run app.py` |
+| Import is slow | Large exports (500 k+ records) take 2–5 minutes; a progress bar is shown |
+| No data visible | Go to Home, import first, then navigate to a page |
+| No sleep stages | Detailed stages require Apple Watch Series 4+ with watchOS 9+ |
+| No VO₂ max | Requires an outdoor run or walk with Apple Watch GPS enabled |
+| Charts look empty after re-import | Click **Refresh** in the Home sidebar to clear the Streamlit data cache |
+
+## License
+
+This project is released under the [MIT License](LICENSE).
