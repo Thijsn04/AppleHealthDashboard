@@ -33,8 +33,6 @@ page_header("⚖️", "Body", "Weight, BMI, body fat percentage, lean mass and c
 
 db_path = default_db_path()
 
-db_path = default_db_path()
-
 with st.spinner("Loading body metrics…"):
     df = load_all_records(str(db_path))
 
