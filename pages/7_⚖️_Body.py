@@ -16,10 +16,12 @@ from apple_health_dashboard.services.body import (
     weight_trend,
 )
 from apple_health_dashboard.services.filters import apply_date_filter
-from apple_health_dashboard.services.stats import to_dataframe
-from apple_health_dashboard.storage.sqlite_store import init_db, iter_records, open_db
 from apple_health_dashboard.web.charts import area_chart, line_chart, scatter_chart
-from apple_health_dashboard.web.page_utils import sidebar_date_filter
+from apple_health_dashboard.web.page_utils import (
+    load_all_records,
+    sidebar_date_filter,
+    sidebar_nav,
+)
 
 st.set_page_config(
     page_title="Body · Apple Health Dashboard",
@@ -34,12 +36,7 @@ st.caption("Weight, BMI, body fat percentage, lean mass and composition trends."
 db_path = default_db_path()
 
 with st.spinner("Loading body metrics…"):
-    con = open_db(db_path)
-    try:
-        init_db(con)
-        df = to_dataframe(list(iter_records(con)))
-    finally:
-        con.close()
+    df = load_all_records(str(db_path))
 
 if df.empty:
     st.warning("No data found. Please import your Apple Health export on the Home page.")
@@ -50,6 +47,10 @@ date_filter = sidebar_date_filter(df)
 if date_filter is None:
     st.warning("Could not determine date range.")
     st.stop()
+
+with st.sidebar:
+    st.divider()
+    sidebar_nav(current="Body")
 
 df_f = apply_date_filter(df, date_filter)
 

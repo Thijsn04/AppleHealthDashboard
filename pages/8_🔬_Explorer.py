@@ -25,7 +25,7 @@ from apple_health_dashboard.storage.sqlite_store import (
     query_records_page,
 )
 from apple_health_dashboard.web.charts import area_chart, bar_chart, line_chart
-from apple_health_dashboard.web.page_utils import sidebar_date_filter
+from apple_health_dashboard.web.page_utils import sidebar_date_filter, sidebar_nav
 
 st.set_page_config(
     page_title="Explorer · Apple Health Dashboard",
@@ -160,6 +160,8 @@ with st.sidebar:
 
     order = st.selectbox("Sort", ["Newest first", "Oldest first"], index=0, key="exp_order")
     page_size = st.selectbox("Rows per page", [100, 250, 500, 1000, 2000], index=2, key="exp_ps")
+    st.divider()
+    sidebar_nav(current="Explorer")
 
 order_sql = "start_at_desc" if order == "Newest first" else "start_at_asc"
 

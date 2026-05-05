@@ -5,10 +5,17 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from apple_health_dashboard.db import default_db_path
-from apple_health_dashboard.services.filters import DateFilter, apply_date_filter, infer_date_filter
-from apple_health_dashboard.storage.sqlite_store import init_db, iter_records, open_db
+from apple_health_dashboard.services.activity_summary import activity_summaries_to_dataframe
+from apple_health_dashboard.services.filters import DateFilter, infer_date_filter
 from apple_health_dashboard.services.stats import to_dataframe
+from apple_health_dashboard.services.workouts import workouts_to_dataframe
+from apple_health_dashboard.storage.sqlite_store import (
+    init_db,
+    iter_activity_summaries,
+    iter_records,
+    iter_workouts,
+    open_db,
+)
 
 
 def page_config(title: str, icon: str = "🍎") -> None:
@@ -55,6 +62,62 @@ def load_all_records(db_path_str: str) -> pd.DataFrame:
     finally:
         con.close()
     return to_dataframe(records)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_all_workouts(db_path_str: str) -> pd.DataFrame:
+    """Load all workout records from SQLite (cached)."""
+    db_path = Path(db_path_str)
+    con = open_db(db_path)
+    try:
+        init_db(con)
+        rows = list(iter_workouts(con))
+    finally:
+        con.close()
+    return workouts_to_dataframe(rows)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_all_activity_summaries(db_path_str: str) -> pd.DataFrame:
+    """Load all activity-ring summaries from SQLite (cached)."""
+    db_path = Path(db_path_str)
+    con = open_db(db_path)
+    try:
+        init_db(con)
+        rows = list(iter_activity_summaries(con))
+    finally:
+        con.close()
+    return activity_summaries_to_dataframe(rows)
+
+
+_NAV_PAGES = [
+    ("🏠", "Home", "app.py"),
+    ("📊", "Overview", "pages/1_📊_Overview.py"),
+    ("❤️", "Heart", "pages/2_❤️_Heart.py"),
+    ("🏃", "Activity", "pages/3_🏃_Activity.py"),
+    ("😴", "Sleep", "pages/4_😴_Sleep.py"),
+    ("🏋️", "Workouts", "pages/5_🏋️_Workouts.py"),
+    ("🔥", "Rings", "pages/6_🔥_Rings.py"),
+    ("⚖️", "Body", "pages/7_⚖️_Body.py"),
+    ("🔬", "Explorer", "pages/8_🔬_Explorer.py"),
+    ("💡", "Insights", "pages/9_💡_Insights.py"),
+]
+
+
+def sidebar_nav(*, current: str = "") -> None:
+    """Render page navigation links inside the sidebar."""
+    st.markdown("### 🗺️ Navigation")
+    for icon, label, page in _NAV_PAGES:
+        is_current = label == current
+        if is_current:
+            st.markdown(
+                f"<div style='padding:4px 8px;border-radius:8px;"
+                f"background:rgba(46,125,110,0.15);font-weight:700;margin-bottom:2px;'>"
+                f"{icon} {label}</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.page_link(page, label=f"{icon} {label}")
 
 
 def require_data(db_path: Path) -> pd.DataFrame | None:

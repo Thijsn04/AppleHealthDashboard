@@ -10,12 +10,13 @@ from apple_health_dashboard.services.workouts import (
     summarize_by_type,
     summarize_workouts_by_week,
     workout_calendar_heatmap_data,
-    workouts_to_dataframe,
-    workout_label,
 )
-from apple_health_dashboard.storage.sqlite_store import init_db, iter_workouts, open_db
 from apple_health_dashboard.web.charts import area_chart, bar_chart, line_chart
-from apple_health_dashboard.web.page_utils import sidebar_date_filter
+from apple_health_dashboard.web.page_utils import (
+    load_all_workouts,
+    sidebar_date_filter,
+    sidebar_nav,
+)
 
 st.set_page_config(
     page_title="Workouts · Apple Health Dashboard",
@@ -30,12 +31,7 @@ st.caption("All workout types, personal records, weekly trends and calendar view
 db_path = default_db_path()
 
 with st.spinner("Loading workouts…"):
-    con = open_db(db_path)
-    try:
-        init_db(con)
-        wdf = workouts_to_dataframe(list(iter_workouts(con)))
-    finally:
-        con.close()
+    wdf = load_all_workouts(str(db_path))
 
 if wdf.empty:
     st.warning("No workouts found. Please import your Apple Health export on the Home page.")
@@ -73,6 +69,8 @@ with st.sidebar:
             date_filter = preset_filter
     else:
         date_filter = preset_filter
+    st.divider()
+    sidebar_nav(current="Workouts")
 
 # Filter workouts
 wdf_f = wdf[(wdf["start_at"] >= date_filter.start) & (wdf["start_at"] <= date_filter.end)].copy()

@@ -17,6 +17,7 @@ from apple_health_dashboard.storage.sqlite_store import (
     open_db,
 )
 from apple_health_dashboard.web.ui import apply_base_ui, info_card, Brand
+from apple_health_dashboard.web.page_utils import sidebar_nav
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,9 @@ hr { margin: 1.2rem 0; opacity: 0.25; }
                 delete_local_data()
                 st.success("Local data deleted.")
                 st.rerun()
+
+        st.divider()
+        sidebar_nav(current="Home")
 
     # ── Import ────────────────────────────────────────────────────────────────
     if export_xml_path is not None and import_clicked:

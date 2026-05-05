@@ -16,16 +16,13 @@ from apple_health_dashboard.services.insights import (
     steps_sleep_pairs,
     workout_recovery_pairs,
 )
-from apple_health_dashboard.services.stats import to_dataframe
-from apple_health_dashboard.services.workouts import workouts_to_dataframe
-from apple_health_dashboard.storage.sqlite_store import (
-    init_db,
-    iter_records,
-    iter_workouts,
-    open_db,
-)
 from apple_health_dashboard.web.charts import line_chart, scatter_chart
-from apple_health_dashboard.web.page_utils import require_data, sidebar_date_filter
+from apple_health_dashboard.web.page_utils import (
+    load_all_records,
+    load_all_workouts,
+    sidebar_date_filter,
+    sidebar_nav,
+)
 
 st.set_page_config(
     page_title="Insights · Apple Health Dashboard",
@@ -61,13 +58,8 @@ st.caption(
 db_path = default_db_path()
 
 with st.spinner("Loading data…"):
-    con = open_db(db_path)
-    try:
-        init_db(con)
-        df = to_dataframe(list(iter_records(con)))
-        wdf = workouts_to_dataframe(list(iter_workouts(con)))
-    finally:
-        con.close()
+    df = load_all_records(str(db_path))
+    wdf = load_all_workouts(str(db_path))
 
 if df.empty:
     st.warning("No data imported yet. Please go to the **Home** page and import your Apple Health export.")
@@ -78,6 +70,10 @@ date_filter = sidebar_date_filter(df)
 if date_filter is None:
     st.warning("Could not determine date range from the data.")
     st.stop()
+
+with st.sidebar:
+    st.divider()
+    sidebar_nav(current="Insights")
 
 df_f = apply_date_filter(df, date_filter)
 if not wdf.empty and "start_at" in wdf.columns:
