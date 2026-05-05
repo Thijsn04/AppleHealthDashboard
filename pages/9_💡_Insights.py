@@ -6,16 +6,21 @@ import streamlit as st
 from apple_health_dashboard.db import default_db_path
 from apple_health_dashboard.services.filters import apply_date_filter
 from apple_health_dashboard.services.insights import (
+    active_energy_pairs,
     circadian_profile,
     correlation_matrix,
     cross_metric_daily_table,
     daily_readiness_score,
     generate_insights,
     sleep_hrv_pairs,
+    sleep_stages_daily,
+    steps_rolling,
     steps_sleep_pairs,
+    workout_duration_hrv_pairs,
+    workout_duration_trend,
     workout_recovery_pairs,
 )
-from apple_health_dashboard.web.charts import line_chart, scatter_chart
+from apple_health_dashboard.web.charts import scatter_chart
 from apple_health_dashboard.web.page_utils import (
     load_all_records,
     load_all_workouts,
@@ -180,7 +185,7 @@ else:
         total_days = len(readiness)
 
         color = "green" if latest_score >= 60 else ("orange" if latest_score >= 40 else "red")
-        st.markdown(f"**Today's readiness**")
+        st.markdown("**Today's readiness**")
         st.markdown(f"<h1 style='color:{color};margin:0'>{latest_score:.0f}</h1>", unsafe_allow_html=True)
         st.metric("Period average", f"{avg_score:.1f}")
         st.metric("Great days (≥60)", f"{great_days}/{total_days}")
@@ -513,3 +518,384 @@ else:
                 f"- **{r['metric_a']}** and **{r['metric_b']}** are {direction} correlated "
                 f"(r = {r['correlation']:+.2f})"
             )
+
+st.divider()
+
+# ── Step Momentum ─────────────────────────────────────────────────────────────
+import altair as alt  # noqa: E402
+
+st.markdown("## 🏃 Step Momentum")
+st.caption(
+    "Daily step count with a 7-day rolling average to reveal your activity trend. "
+    "The dashed line marks the 8,000-step daily goal."
+)
+
+steps_data = steps_rolling(df_f)
+if steps_data.empty or len(steps_data) < 7:
+    st.info("Need at least 7 days of step data to show this analysis.")
+else:
+    steps_data["day"] = pd.to_datetime(steps_data["day"])
+
+    # Summary metrics
+    avg_steps = float(steps_data["steps"].mean())
+    max_steps = float(steps_data["steps"].max())
+    goal_days = int((steps_data["steps"] >= 8_000).sum())
+    total_days = len(steps_data)
+
+    col_sm, col_sa, col_sg = st.columns(3)
+    col_sm.metric("Daily average", f"{avg_steps:,.0f} steps")
+    col_sa.metric("Personal best", f"{max_steps:,.0f} steps")
+    col_sg.metric("Days ≥ 8,000 steps", f"{goal_days}/{total_days}")
+
+    bars = (
+        alt.Chart(steps_data)
+        .mark_bar(color="#CBD5E1", opacity=0.6)
+        .encode(
+            x=alt.X("day:T", axis=alt.Axis(labelAngle=-30, title="")),
+            y=alt.Y("steps:Q", axis=alt.Axis(title="Steps")),
+            tooltip=[
+                alt.Tooltip("day:T", title="Date"),
+                alt.Tooltip("steps:Q", title="Steps", format=","),
+            ],
+        )
+    )
+    rolling_line = (
+        alt.Chart(steps_data)
+        .mark_line(strokeWidth=2.5, color="#2E7D6E")
+        .encode(
+            x=alt.X("day:T"),
+            y=alt.Y("steps_rolling:Q"),
+            tooltip=[
+                alt.Tooltip("day:T", title="Date"),
+                alt.Tooltip("steps_rolling:Q", title="7-day avg", format=",.0f"),
+            ],
+        )
+    )
+    goal_line = (
+        alt.Chart(pd.DataFrame({"y": [8_000]}))
+        .mark_rule(strokeDash=[5, 3], color="#EF4444", strokeWidth=1.5)
+        .encode(y=alt.Y("y:Q"))
+    )
+    st.altair_chart(
+        (bars + rolling_line + goal_line)
+        .properties(
+            title="Daily Steps · Green line = 7-day rolling average · Red dashed = 8k goal",
+            height=280,
+        )
+        .interactive(),
+        use_container_width=True,
+    )
+
+st.divider()
+
+# ── Active Energy Burn ────────────────────────────────────────────────────────
+st.markdown("## 🔥 Active Energy Burn")
+st.caption(
+    "Daily active calories burned. The shaded area shows total burn; "
+    "the line is a 7-day rolling average to smooth out single-day spikes."
+)
+
+kcal_data = active_energy_pairs(df_f)
+if kcal_data.empty or len(kcal_data) < 7:
+    st.info("Need at least 7 days of active energy data to show this analysis.")
+else:
+    kcal_data["day"] = pd.to_datetime(kcal_data["day"])
+    kcal_data["kcal_rolling"] = kcal_data["active_kcal"].rolling(7, min_periods=1).mean()
+
+    avg_kcal = float(kcal_data["active_kcal"].mean())
+    max_kcal = float(kcal_data["active_kcal"].max())
+
+    col_ka, col_km = st.columns(2)
+    col_ka.metric("Daily average", f"{avg_kcal:,.0f} kcal")
+    col_km.metric("Highest day", f"{max_kcal:,.0f} kcal")
+
+    kcal_area = (
+        alt.Chart(kcal_data)
+        .mark_area(color="#F59E0B", opacity=0.25, line={"color": "#F59E0B", "strokeWidth": 1})
+        .encode(
+            x=alt.X("day:T", axis=alt.Axis(labelAngle=-30, title="")),
+            y=alt.Y("active_kcal:Q", axis=alt.Axis(title="Active kcal")),
+            tooltip=[
+                alt.Tooltip("day:T", title="Date"),
+                alt.Tooltip("active_kcal:Q", title="Active kcal", format=",.0f"),
+            ],
+        )
+    )
+    kcal_roll = (
+        alt.Chart(kcal_data)
+        .mark_line(strokeWidth=2.5, color="#D97706")
+        .encode(
+            x=alt.X("day:T"),
+            y=alt.Y("kcal_rolling:Q"),
+            tooltip=[
+                alt.Tooltip("day:T", title="Date"),
+                alt.Tooltip("kcal_rolling:Q", title="7-day avg", format=",.0f"),
+            ],
+        )
+    )
+    st.altair_chart(
+        (kcal_area + kcal_roll)
+        .properties(title="Active Energy Burn · Orange line = 7-day rolling average", height=260)
+        .interactive(),
+        use_container_width=True,
+    )
+
+st.divider()
+
+# ── Sleep Stage Breakdown ─────────────────────────────────────────────────────
+st.markdown("## 🌙 Sleep Stage Breakdown — Deep & REM")
+st.caption(
+    "Daily restorative (Deep + REM) sleep hours and what fraction of total sleep they represent. "
+    "Aim for at least 20% of total sleep to be restorative."
+)
+
+stage_data = sleep_stages_daily(df_f)
+if stage_data.empty or len(stage_data) < 7:
+    st.info(
+        "Need at least 7 nights of detailed sleep stage data (Deep + REM) to show this analysis. "
+        "This requires an Apple Watch that records sleep stages."
+    )
+else:
+    stage_data["day"] = pd.to_datetime(stage_data["day"])
+
+    avg_pct = float(stage_data["restorative_pct"].mean())
+    avg_rest_h = float(stage_data["restorative_h"].mean())
+    best_pct = float(stage_data["restorative_pct"].max())
+
+    col_rp, col_rh, col_rb = st.columns(3)
+    col_rp.metric("Avg restorative %", f"{avg_pct:.0f}%")
+    col_rh.metric("Avg restorative hours", f"{avg_rest_h:.1f}h")
+    col_rb.metric("Best night", f"{best_pct:.0f}%")
+
+    col_bars, col_pct = st.columns(2)
+
+    with col_bars:
+        stage_melted = stage_data[["day", "total_h", "restorative_h"]].melt(
+            id_vars="day", value_vars=["total_h", "restorative_h"],
+            var_name="type", value_name="hours",
+        )
+        stage_melted["type"] = stage_melted["type"].map(
+            {"total_h": "Total sleep", "restorative_h": "Deep + REM"}
+        )
+        stacked = (
+            alt.Chart(stage_melted)
+            .mark_bar(opacity=0.85)
+            .encode(
+                x=alt.X("day:T", axis=alt.Axis(labelAngle=-30, title="")),
+                y=alt.Y("hours:Q", axis=alt.Axis(title="Hours")),
+                color=alt.Color(
+                    "type:N",
+                    scale=alt.Scale(
+                        domain=["Total sleep", "Deep + REM"],
+                        range=["#94A3B8", "#7C3AED"],
+                    ),
+                    legend=alt.Legend(title=""),
+                ),
+                tooltip=[
+                    alt.Tooltip("day:T", title="Date"),
+                    alt.Tooltip("type:N", title="Type"),
+                    alt.Tooltip("hours:Q", title="Hours", format=".1f"),
+                ],
+            )
+            .properties(title="Total vs Restorative Sleep", height=260)
+        )
+        st.altair_chart(stacked, use_container_width=True)
+
+    with col_pct:
+        ref20 = (
+            alt.Chart(pd.DataFrame({"y": [20]}))
+            .mark_rule(strokeDash=[4, 4], color="#10B981", strokeWidth=1.5)
+            .encode(y=alt.Y("y:Q"))
+        )
+        pct_line = (
+            alt.Chart(stage_data)
+            .mark_line(strokeWidth=2, color="#7C3AED")
+            .encode(
+                x=alt.X("day:T", axis=alt.Axis(labelAngle=-30, title="")),
+                y=alt.Y(
+                    "restorative_pct:Q",
+                    axis=alt.Axis(title="Restorative %"),
+                    scale=alt.Scale(domain=[0, 100]),
+                ),
+                tooltip=[
+                    alt.Tooltip("day:T", title="Date"),
+                    alt.Tooltip("restorative_pct:Q", title="Deep+REM %", format=".1f"),
+                ],
+            )
+        )
+        st.altair_chart(
+            (pct_line + ref20).properties(
+                title="Restorative Sleep % · green dashed = 20% target",
+                height=260,
+            ),
+            use_container_width=True,
+        )
+        st.caption("Green dashed line = 20% target")
+
+st.divider()
+
+# ── Workout Duration Trend ────────────────────────────────────────────────────
+st.markdown("## ⏱️ Workout Duration Trend")
+st.caption(
+    "Each bar is one workout session. The line shows a 7-session rolling average "
+    "so you can track whether your sessions are getting longer or shorter over time."
+)
+
+dur_data = workout_duration_trend(wdf_f)
+if dur_data.empty or len(dur_data) < 5:
+    st.info("Need at least 5 logged workouts to show this analysis.")
+else:
+    dur_data["day"] = pd.to_datetime(dur_data["day"])
+
+    avg_dur = float(dur_data["duration_min"].mean())
+    max_dur = float(dur_data["duration_min"].max())
+    total_workouts = len(dur_data)
+
+    col_da, col_dm, col_dt = st.columns(3)
+    col_da.metric("Avg duration", f"{avg_dur:.0f} min")
+    col_dm.metric("Longest session", f"{max_dur:.0f} min")
+    col_dt.metric("Sessions analysed", f"{total_workouts:,}")
+
+    dur_bars = (
+        alt.Chart(dur_data)
+        .mark_bar(color="#4CAF91", opacity=0.6)
+        .encode(
+            x=alt.X("day:T", axis=alt.Axis(labelAngle=-30, title="")),
+            y=alt.Y("duration_min:Q", axis=alt.Axis(title="Minutes")),
+            tooltip=[
+                alt.Tooltip("day:T", title="Date"),
+                alt.Tooltip("duration_min:Q", title="Duration (min)", format=".0f"),
+            ],
+        )
+    )
+    dur_roll = (
+        alt.Chart(dur_data)
+        .mark_line(strokeWidth=2.5, color="#2E7D6E")
+        .encode(
+            x=alt.X("day:T"),
+            y=alt.Y("duration_rolling:Q"),
+            tooltip=[
+                alt.Tooltip("day:T", title="Date"),
+                alt.Tooltip("duration_rolling:Q", title="7-session avg", format=".0f"),
+            ],
+        )
+    )
+    st.altair_chart(
+        (dur_bars + dur_roll)
+        .properties(title="Workout Duration · Green line = 7-session rolling average", height=280)
+        .interactive(),
+        use_container_width=True,
+    )
+
+st.divider()
+
+# ── Workout Duration → Next-day HRV ──────────────────────────────────────────
+st.markdown("## 🏋️ → ❤️ Workout Load & Next-Morning HRV")
+st.caption(
+    "Does working out harder (longer) hurt your recovery? "
+    "Each dot is a day after a workout: total workout minutes vs next-morning HRV."
+)
+
+whrv = workout_duration_hrv_pairs(df_f, wdf_f)
+if whrv.empty or len(whrv) < 7:
+    st.info("Need at least 7 post-workout HRV readings to show this analysis.")
+else:
+    corr_wh = whrv["workout_duration_min"].corr(whrv["hrv"])
+    col_wh, col_wi = st.columns([2, 1])
+
+    with col_wh:
+        whrv_chart = (
+            alt.Chart(whrv)
+            .mark_circle(size=60, opacity=0.7)
+            .encode(
+                x=alt.X(
+                    "workout_duration_min:Q",
+                    axis=alt.Axis(title="Total workout duration (min)"),
+                ),
+                y=alt.Y("hrv:Q", axis=alt.Axis(title="Next-morning HRV (ms)")),
+                color=alt.Color(
+                    "workout_type:N",
+                    legend=alt.Legend(title="Workout type"),
+                ),
+                tooltip=[
+                    alt.Tooltip("day:T", title="Date"),
+                    alt.Tooltip("workout_type:N", title="Type"),
+                    alt.Tooltip("workout_duration_min:Q", title="Duration (min)", format=".0f"),
+                    alt.Tooltip("hrv:Q", title="Next-day HRV (ms)", format=".1f"),
+                ],
+            )
+            .properties(title="Workout Duration → Next-day HRV", height=300)
+        )
+        st.altair_chart(whrv_chart, use_container_width=True)
+
+    with col_wi:
+        st.metric("Pearson correlation", f"{corr_wh:+.2f}")
+        if corr_wh < -0.3:
+            st.warning(
+                f"⚠️ Longer workouts tend to reduce next-day HRV (r={corr_wh:.2f}). "
+                "This is normal — harder training means more recovery needed. "
+                "Build in rest days after long sessions."
+            )
+        elif corr_wh > 0.3:
+            st.success(
+                f"✅ Longer workouts are associated with higher next-day HRV (r={corr_wh:.2f}). "
+                "Your body handles training volume well."
+            )
+        else:
+            st.info(
+                f"No strong link between workout duration and next-day HRV (r={corr_wh:.2f}). "
+                "Workout intensity or type may matter more than duration alone."
+            )
+        st.metric("Pairs analysed", f"{len(whrv):,}")
+
+st.divider()
+
+# ── HRV Distribution ──────────────────────────────────────────────────────────
+st.markdown("## 📊 HRV Distribution")
+st.caption(
+    "How your HRV values are distributed over the selected period. "
+    "A wide, right-skewed distribution (peak at higher values) is a sign of "
+    "good fitness and recovery."
+)
+
+from apple_health_dashboard.services.heart import hrv_trend as _hrv_trend  # noqa: E402
+
+hrv_dist_df = _hrv_trend(df_f)
+if hrv_dist_df.empty or len(hrv_dist_df) < 14:
+    st.info("Need at least 14 days of HRV data to show a meaningful distribution.")
+else:
+    avg_hrv = float(hrv_dist_df["hrv"].mean())
+    median_hrv = float(hrv_dist_df["hrv"].median())
+    p10 = float(hrv_dist_df["hrv"].quantile(0.10))
+    p90 = float(hrv_dist_df["hrv"].quantile(0.90))
+
+    col_ha, col_hm, col_hr = st.columns(3)
+    col_ha.metric("Average HRV", f"{avg_hrv:.0f} ms")
+    col_hm.metric("Median HRV", f"{median_hrv:.0f} ms")
+    col_hr.metric("P10 – P90 range", f"{p10:.0f} – {p90:.0f} ms")
+
+    hist = (
+        alt.Chart(hrv_dist_df)
+        .mark_bar(color="#7C3AED", opacity=0.75)
+        .encode(
+            x=alt.X(
+                "hrv:Q",
+                bin=alt.Bin(maxbins=25),
+                axis=alt.Axis(title="HRV (ms)"),
+            ),
+            y=alt.Y("count():Q", axis=alt.Axis(title="Days")),
+            tooltip=[
+                alt.Tooltip("hrv:Q", bin=True, title="HRV range (ms)"),
+                alt.Tooltip("count():Q", title="Days"),
+            ],
+        )
+        .properties(title="HRV Distribution (daily values)", height=260)
+    )
+    avg_rule = (
+        alt.Chart(pd.DataFrame({"x": [avg_hrv]}))
+        .mark_rule(strokeDash=[4, 4], color="#EF4444", strokeWidth=2)
+        .encode(x=alt.X("x:Q"))
+    )
+    st.altair_chart((hist + avg_rule).interactive(), use_container_width=True)
+    st.caption("Red dashed line = your average HRV")
+

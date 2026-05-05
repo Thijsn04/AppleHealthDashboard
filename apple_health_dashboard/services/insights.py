@@ -9,16 +9,15 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-import numpy as np
 import pandas as pd
 
 from apple_health_dashboard.services.heart import (
-    HRV_TYPE,
-    RESTING_HR_TYPE,
     hrv_trend,
     resting_hr_trend,
+    vo2max_trend,
 )
 from apple_health_dashboard.services.sleep import (
+    SLEEP_STAGES_RESTORATIVE,
     sleep_duration_by_day,
     sleep_records,
 )
@@ -283,24 +282,175 @@ def circadian_profile(df: pd.DataFrame) -> pd.DataFrame:
     return out.sort_values("weekday").reset_index(drop=True)
 
 
-# ── Cross-metric correlation matrix ──────────────────────────────────────────
+# ── Active energy pairs ───────────────────────────────────────────────────────
+
+KCAL_TYPE = "HKQuantityTypeIdentifierActiveEnergyBurned"
+STEP_TYPE_ID = "HKQuantityTypeIdentifierStepCount"
+
+
+def active_energy_pairs(df: pd.DataFrame) -> pd.DataFrame:
+    """Return daily active energy burned.
+
+    Returns columns: day, active_kcal
+    """
+    from apple_health_dashboard.services.stats import summarize_by_day_agg
+
+    if df.empty or "type" not in df.columns:
+        return pd.DataFrame(columns=["day", "active_kcal"])
+
+    sub = df[df["type"] == KCAL_TYPE].copy()
+    daily = summarize_by_day_agg(sub, agg="sum")
+    if daily.empty:
+        return pd.DataFrame(columns=["day", "active_kcal"])
+
+    daily["day"] = pd.to_datetime(daily["day"])
+    return daily[["day", "value"]].rename(columns={"value": "active_kcal"}).sort_values("day")
+
+
+def steps_rolling(df: pd.DataFrame, window: int = 7) -> pd.DataFrame:
+    """Return daily step count with a rolling average.
+
+    Returns columns: day, steps, steps_rolling
+    """
+    from apple_health_dashboard.services.stats import summarize_by_day_agg
+
+    if df.empty or "type" not in df.columns:
+        return pd.DataFrame(columns=["day", "steps", "steps_rolling"])
+
+    sub = df[df["type"] == STEP_TYPE_ID].copy()
+    daily = summarize_by_day_agg(sub, agg="sum")
+    if daily.empty:
+        return pd.DataFrame(columns=["day", "steps", "steps_rolling"])
+
+    daily["day"] = pd.to_datetime(daily["day"])
+    daily = daily.rename(columns={"value": "steps"}).sort_values("day").reset_index(drop=True)
+    daily["steps_rolling"] = daily["steps"].rolling(window, min_periods=1).mean()
+    return daily[["day", "steps", "steps_rolling"]]
+
+
+def sleep_stages_daily(df: pd.DataFrame) -> pd.DataFrame:
+    """Return daily restorative (deep + REM) sleep hours and fraction of total sleep.
+
+    Returns columns: day, total_h, restorative_h, restorative_pct
+    """
+    srec = sleep_records(df)
+    if srec.empty or "start_at" not in srec.columns or "end_at" not in srec.columns:
+        return pd.DataFrame(columns=["day", "total_h", "restorative_h", "restorative_pct"])
+
+    total_df = sleep_duration_by_day(srec, stages="actual")
+    if total_df.empty:
+        total_df = sleep_duration_by_day(srec, stages="all")
+
+    valid = srec[srec["start_at"].notna() & srec["end_at"].notna()].copy()
+    if "value_str" in valid.columns:
+        valid = valid[valid["value_str"].isin(SLEEP_STAGES_RESTORATIVE)]
+    else:
+        return pd.DataFrame(columns=["day", "total_h", "restorative_h", "restorative_pct"])
+
+    if valid.empty:
+        return pd.DataFrame(columns=["day", "total_h", "restorative_h", "restorative_pct"])
+
+    valid["duration_h"] = (valid["end_at"] - valid["start_at"]).dt.total_seconds() / 3600.0
+    valid["day"] = valid["end_at"].dt.floor("D")
+    rest_df = valid.groupby("day", as_index=False)["duration_h"].sum().rename(
+        columns={"duration_h": "restorative_h"}
+    )
+    rest_df["day"] = pd.to_datetime(rest_df["day"])
+    total_df["day"] = pd.to_datetime(total_df["day"])
+
+    merged = total_df.merge(rest_df, on="day", how="inner").rename(columns={"hours": "total_h"})
+    merged = merged[merged["total_h"] > 0].copy()
+    merged["restorative_pct"] = (merged["restorative_h"] / merged["total_h"] * 100).round(1)
+    return merged.sort_values("day").reset_index(drop=True)
+
+
+def workout_duration_hrv_pairs(df: pd.DataFrame, wdf: pd.DataFrame) -> pd.DataFrame:
+    """Pair each workout's duration with next-morning HRV.
+
+    Returns columns: day (HRV measurement day), workout_duration_min, hrv, workout_type
+    """
+    from apple_health_dashboard.services.workouts import workout_label
+
+    hrv_df = hrv_trend(df)
+    if hrv_df.empty or wdf.empty or "start_at" not in wdf.columns:
+        return pd.DataFrame(columns=["day", "workout_duration_min", "hrv", "workout_type"])
+
+    hrv_df = hrv_df.copy()
+    hrv_df["day"] = pd.to_datetime(hrv_df["day"])
+
+    wdf2 = wdf.copy()
+    wdf2["workout_day"] = pd.to_datetime(wdf2["start_at"]).dt.normalize()
+
+    if "duration_min" not in wdf2.columns:
+        if "end_at" in wdf2.columns and "start_at" in wdf2.columns:
+            wdf2["duration_min"] = (
+                (pd.to_datetime(wdf2["end_at"]) - pd.to_datetime(wdf2["start_at"]))
+                .dt.total_seconds() / 60
+            )
+        else:
+            return pd.DataFrame(columns=["day", "workout_duration_min", "hrv", "workout_type"])
+
+    wdf2["hrv_day"] = wdf2["workout_day"] + pd.Timedelta(days=1)
+    wdf2_agg = (
+        wdf2.groupby("hrv_day")
+        .agg(
+            workout_duration_min=("duration_min", "sum"),
+            workout_type=("activity_type", "first"),
+        )
+        .reset_index()
+        .rename(columns={"hrv_day": "day"})
+    )
+    wdf2_agg["workout_type"] = wdf2_agg["workout_type"].apply(
+        lambda x: workout_label(x) if pd.notna(x) else "Unknown"
+    )
+
+    merged = hrv_df.merge(wdf2_agg, on="day", how="inner")
+    return merged.sort_values("day").reset_index(drop=True)
+
+
+def workout_duration_trend(wdf: pd.DataFrame, window: int = 7) -> pd.DataFrame:
+    """Return per-workout durations with a rolling mean.
+
+    Returns columns: day, duration_min, duration_rolling
+    """
+    if wdf.empty or "start_at" not in wdf.columns:
+        return pd.DataFrame(columns=["day", "duration_min", "duration_rolling"])
+
+    wdf2 = wdf.copy()
+    wdf2["day"] = pd.to_datetime(wdf2["start_at"]).dt.normalize()
+
+    if "duration_min" not in wdf2.columns:
+        if "end_at" in wdf2.columns:
+            wdf2["duration_min"] = (
+                (pd.to_datetime(wdf2["end_at"]) - pd.to_datetime(wdf2["start_at"]))
+                .dt.total_seconds() / 60
+            )
+        else:
+            return pd.DataFrame(columns=["day", "duration_min", "duration_rolling"])
+
+    wdf2 = wdf2[wdf2["duration_min"].notna() & (wdf2["duration_min"] > 0)].copy()
+    if wdf2.empty:
+        return pd.DataFrame(columns=["day", "duration_min", "duration_rolling"])
+
+    wdf2 = wdf2.sort_values("day").reset_index(drop=True)
+    wdf2["duration_rolling"] = wdf2["duration_min"].rolling(window, min_periods=1).mean()
+    return wdf2[["day", "duration_min", "duration_rolling"]]
+
+
+
 
 def cross_metric_daily_table(df: pd.DataFrame, wdf: pd.DataFrame) -> pd.DataFrame:
     """Build a daily table of key metrics suitable for a correlation matrix.
 
-    Returns columns: day, steps, sleep_h, rhr, hrv, active_kcal (if available).
+    Returns columns: day, steps, sleep_h, rhr, hrv, active_kcal, restorative_h (if available).
     """
     from apple_health_dashboard.services.stats import summarize_by_day_agg
-    from apple_health_dashboard.services.activity_summary import activity_summaries_to_dataframe
 
     result: dict[str, pd.Series] = {}
 
-    STEP_TYPE = "HKQuantityTypeIdentifierStepCount"
-    KCAL_TYPE = "HKQuantityTypeIdentifierActiveEnergyBurned"
-
     if not df.empty and "type" in df.columns:
         for rt, col, agg in [
-            (STEP_TYPE, "steps", "sum"),
+            (STEP_TYPE_ID, "steps", "sum"),
             (KCAL_TYPE, "active_kcal", "sum"),
         ]:
             sub = df[df["type"] == rt].copy()
@@ -322,6 +472,11 @@ def cross_metric_daily_table(df: pd.DataFrame, wdf: pd.DataFrame) -> pd.DataFram
         sleep_df = sleep_duration_by_day(srec, stages="all")
     if not sleep_df.empty:
         result["sleep_h"] = sleep_df.set_index(pd.to_datetime(sleep_df["day"]))["hours"]
+
+    # Add restorative sleep hours to the correlation table
+    rest_df = sleep_stages_daily(df)
+    if not rest_df.empty:
+        result["restorative_h"] = rest_df.set_index(pd.to_datetime(rest_df["day"]))["restorative_h"]
 
     if not result:
         return pd.DataFrame()
@@ -578,6 +733,321 @@ def generate_insights(
                 "icon": "🕰️",
                 "kind": "neutral",
             })
+
+    # ── Steps goal compliance ─────────────────────────────────────────────────
+    _STEP_GOAL = 8_000
+    steps_df = steps_rolling(df)
+    if not steps_df.empty and len(steps_df) >= min_days:
+        goal_pct = float((steps_df["steps"] >= _STEP_GOAL).sum() / len(steps_df) * 100)
+        avg_steps = float(steps_df["steps"].mean())
+        if goal_pct >= 80:
+            insights.append({
+                "title": f"Steps goal crushed {goal_pct:.0f}% of days 🎯",
+                "body": (
+                    f"You hit {_STEP_GOAL:,} steps on {goal_pct:.0f}% of days "
+                    f"(average {avg_steps:,.0f} steps/day). "
+                    "Consistent daily movement is linked to lower cardiovascular risk "
+                    "and better mood."
+                ),
+                "icon": "🏃",
+                "kind": "positive",
+            })
+        elif goal_pct < 40:
+            insights.append({
+                "title": "Steps goal missed most days",
+                "body": (
+                    f"You reached {_STEP_GOAL:,} steps on only {goal_pct:.0f}% of days "
+                    f"(average {avg_steps:,.0f} steps/day). "
+                    "Even adding a 10-minute walk can make a measurable "
+                    "difference to your health over time."
+                ),
+                "icon": "🚶",
+                "kind": "negative",
+            })
+
+    # ── Active calorie burn trend ─────────────────────────────────────────────
+    kcal_df = active_energy_pairs(df)
+    if not kcal_df.empty and len(kcal_df) >= min_days:
+        kcal = kcal_df["active_kcal"]
+        recent_kcal = kcal.iloc[-7:].mean()
+        older_kcal = kcal.iloc[-30:-7].mean() if len(kcal) >= 30 else kcal.mean()
+        if len(kcal) >= 30:
+            pct = (recent_kcal - older_kcal) / max(older_kcal, 1) * 100
+            if pct >= 15:
+                insights.append({
+                    "title": "Active burn ramping up 🔥",
+                    "body": (
+                        f"Your active calorie burn this week ({recent_kcal:.0f} kcal/day) is "
+                        f"{pct:.0f}% above your 30-day average ({older_kcal:.0f} kcal/day). "
+                        "More active days mean more energy expenditure — keep it up!"
+                    ),
+                    "icon": "🔥",
+                    "kind": "positive",
+                })
+            elif pct <= -15:
+                insights.append({
+                    "title": "Activity drop detected",
+                    "body": (
+                        f"Your active calorie burn this week ({recent_kcal:.0f} kcal/day) is "
+                        f"{abs(pct):.0f}% below your 30-day average ({older_kcal:.0f} kcal/day). "
+                        "A dip in active energy is normal after hard training blocks, "
+                        "but worth noting if it persists."
+                    ),
+                    "icon": "📉",
+                    "kind": "neutral",
+                })
+
+    # ── Restorative sleep (deep + REM) ────────────────────────────────────────
+    rest_stages = sleep_stages_daily(df)
+    if not rest_stages.empty and len(rest_stages) >= min_days:
+        avg_rest_pct = float(rest_stages["restorative_pct"].mean())
+        avg_rest_h = float(rest_stages["restorative_h"].mean())
+        if avg_rest_pct >= 25:
+            insights.append({
+                "title": "Excellent restorative sleep 🌙",
+                "body": (
+                    f"On average {avg_rest_pct:.0f}% of your sleep ({avg_rest_h:.1f}h) "
+                    "is Deep or REM sleep — above the typical 20-25% range. "
+                    "Restorative sleep is when your brain consolidates memories "
+                    "and your body repairs tissue."
+                ),
+                "icon": "🌙",
+                "kind": "positive",
+            })
+        elif avg_rest_pct < 15:
+            insights.append({
+                "title": "Low restorative sleep ⚠️",
+                "body": (
+                    f"Only {avg_rest_pct:.0f}% of your sleep ({avg_rest_h:.1f}h) "
+                    "is Deep or REM — below the recommended 20%. "
+                    "Reducing alcohol, maintaining a consistent bedtime and avoiding screens "
+                    "can increase restorative sleep stages."
+                ),
+                "icon": "⚠️",
+                "kind": "negative",
+            })
+
+    # ── Sleep consistency (std dev) ───────────────────────────────────────────
+    if not sleep_df.empty and len(sleep_df) >= min_days:
+        sleep_std = float(sleep_df["hours"].std())
+        sleep_avg = float(sleep_df["hours"].mean())
+        if sleep_std <= 0.75 and sleep_avg >= 6.5:
+            insights.append({
+                "title": "Very consistent sleep schedule ✅",
+                "body": (
+                    f"Your nightly sleep duration varies by only ±{sleep_std:.1f}h on average. "
+                    "High sleep consistency reinforces your circadian rhythm, "
+                    "improves energy levels "
+                    "and is associated with better cognitive performance."
+                ),
+                "icon": "✅",
+                "kind": "positive",
+            })
+        elif sleep_std >= 1.5:
+            insights.append({
+                "title": "Irregular sleep pattern",
+                "body": (
+                    f"Your sleep duration varies by ±{sleep_std:.1f}h night to night. "
+                    "Irregular sleep schedules are linked to metabolic issues "
+                    "and poorer next-day mood. "
+                    "Try to keep bedtime and wake time within a 30-minute "
+                    "window each day."
+                ),
+                "icon": "🕐",
+                "kind": "negative",
+            })
+
+    # ── VO₂ max trend ─────────────────────────────────────────────────────────
+    vo2_df = vo2max_trend(df)
+    if not vo2_df.empty and len(vo2_df) >= 7:
+        from apple_health_dashboard.services.heart import classify_vo2max
+
+        latest_vo2 = float(vo2_df["vo2max"].iloc[-1])
+        classification = classify_vo2max(latest_vo2)
+        if len(vo2_df) >= 14:
+            older_vo2 = float(vo2_df["vo2max"].iloc[:-7].mean())
+            recent_vo2 = float(vo2_df["vo2max"].iloc[-7:].mean())
+            delta_vo2 = recent_vo2 - older_vo2
+            if delta_vo2 >= 1.0:
+                insights.append({
+                    "title": "VO₂ max improving 📈",
+                    "body": (
+                        f"Your estimated VO₂ max has risen by {delta_vo2:.1f} mL/kg/min "
+                        f"recently (latest: {latest_vo2:.1f} — {classification}). "
+                        "This is the single best predictor of long-term cardiovascular health."
+                    ),
+                    "icon": "🫁",
+                    "kind": "positive",
+                })
+            elif delta_vo2 <= -1.0:
+                insights.append({
+                    "title": "VO₂ max declining",
+                    "body": (
+                        f"Your estimated VO₂ max has dropped by {abs(delta_vo2):.1f} mL/kg/min "
+                        f"recently (latest: {latest_vo2:.1f} — {classification}). "
+                        "Aerobic training such as running, cycling or swimming "
+                        "can reverse this trend."
+                    ),
+                    "icon": "🫁",
+                    "kind": "negative",
+                })
+        else:
+            insights.append({
+                "title": f"VO₂ max: {classification}",
+                "body": (
+                    f"Your current estimated VO₂ max is {latest_vo2:.1f} mL/kg/min "
+                    f"({classification}). "
+                    "Regular cardio training — especially zone-2 sessions — "
+                    "is the most effective way to raise this number over time."
+                ),
+                "icon": "🫁",
+                "kind": "info",
+            })
+
+    # ── HRV absolute level ────────────────────────────────────────────────────
+    if not hrv_df.empty and len(hrv_df) >= 7:
+        _hrv_window = hrv_df["hrv"].iloc[-14:] if len(hrv_df) >= 14 else hrv_df["hrv"]
+        avg_hrv = float(_hrv_window.mean())
+        if avg_hrv >= 60:
+            insights.append({
+                "title": "Strong HRV baseline 💚",
+                "body": (
+                    f"Your recent average HRV is {avg_hrv:.0f} ms — above 60 ms, "
+                    "which is associated with robust autonomic nervous system balance "
+                    "and good aerobic fitness."
+                ),
+                "icon": "💚",
+                "kind": "positive",
+            })
+        elif avg_hrv < 30:
+            insights.append({
+                "title": "HRV below typical range",
+                "body": (
+                    f"Your recent average HRV is {avg_hrv:.0f} ms — below 30 ms. "
+                    "Low HRV can reflect chronic stress, insufficient sleep "
+                    "or low aerobic fitness. "
+                    "Sleep, stress management and consistent aerobic exercise are "
+                    "the top levers to improve it."
+                ),
+                "icon": "💔",
+                "kind": "negative",
+            })
+
+    # ── Workout type diversity ────────────────────────────────────────────────
+    if not wdf.empty and "activity_type" in wdf.columns and len(wdf) >= 10:
+        from apple_health_dashboard.services.workouts import workout_label
+
+        n_types = wdf["activity_type"].nunique()
+        top_type = wdf["activity_type"].value_counts().idxmax()
+        top_label = workout_label(top_type)
+        top_pct = float(wdf["activity_type"].value_counts().iloc[0] / len(wdf) * 100)
+        if n_types >= 4:
+            insights.append({
+                "title": f"Varied training — {n_types} different workout types 🎯",
+                "body": (
+                    f"You've done {n_types} distinct workout types. "
+                    f"Your most frequent is {top_label} ({top_pct:.0f}% of sessions). "
+                    "Training variety reduces injury risk and builds well-rounded fitness."
+                ),
+                "icon": "🎯",
+                "kind": "positive",
+            })
+        elif n_types == 1:
+            insights.append({
+                "title": f"All-in on {top_label}",
+                "body": (
+                    f"100% of your workouts are {top_label}. "
+                    "Adding cross-training (e.g. strength work, yoga or swimming) "
+                    "can reduce injury risk and improve overall performance "
+                    "in your primary sport."
+                ),
+                "icon": "🔄",
+                "kind": "neutral",
+            })
+
+    # ── Workout duration trend ────────────────────────────────────────────────
+    dur_df = workout_duration_trend(wdf)
+    if not dur_df.empty and len(dur_df) >= 14:
+        recent_dur = float(dur_df["duration_min"].iloc[-7:].mean())
+        if len(dur_df) >= 30:
+            older_dur = float(dur_df["duration_min"].iloc[-30:-7].mean())
+        else:
+            older_dur = float(dur_df["duration_min"].mean())
+        delta_dur = recent_dur - older_dur
+        if len(dur_df) >= 30 and delta_dur >= 10:
+            insights.append({
+                "title": "Workouts getting longer ⏱️",
+                "body": (
+                    f"Your recent workout sessions average {recent_dur:.0f} min, "
+                    f"up {delta_dur:.0f} min from your 30-day average ({older_dur:.0f} min). "
+                    "Longer sessions can build endurance — just be mindful of recovery."
+                ),
+                "icon": "⏱️",
+                "kind": "positive",
+            })
+        elif len(dur_df) >= 30 and delta_dur <= -10:
+            insights.append({
+                "title": "Shorter sessions recently",
+                "body": (
+                    f"Recent workouts average {recent_dur:.0f} min vs {older_dur:.0f} min before. "
+                    "If intentional (deload, taper), this is smart. "
+                    "Otherwise, shorter sessions can still be effective — quality beats quantity."
+                ),
+                "icon": "⏱️",
+                "kind": "neutral",
+            })
+
+    # ── Steps weekday vs weekend ──────────────────────────────────────────────
+    if not steps_df.empty and len(steps_df) >= 14:
+        steps_df2 = steps_df.copy()
+        steps_df2["dow"] = pd.to_datetime(steps_df2["day"]).dt.dayofweek
+        weekday_steps = steps_df2[steps_df2["dow"] < 5]["steps"].mean()
+        weekend_steps = steps_df2[steps_df2["dow"] >= 5]["steps"].mean()
+        if not (pd.isna(weekday_steps) or pd.isna(weekend_steps)):
+            diff_steps = weekday_steps - weekend_steps
+            if diff_steps >= 2000:
+                insights.append({
+                    "title": "More active on weekdays 💼",
+                    "body": (
+                        f"You average {weekday_steps:,.0f} steps on weekdays vs "
+                        f"{weekend_steps:,.0f} on weekends "
+                        f"— a difference of {diff_steps:,.0f}. "
+                        "Try adding a weekend walk or outdoor activity "
+                        "to balance your weekly movement."
+                    ),
+                    "icon": "💼",
+                    "kind": "neutral",
+                })
+            elif diff_steps <= -2000:
+                insights.append({
+                    "title": "Weekend warrior walker 🏖️",
+                    "body": (
+                        f"You move more on weekends ({weekend_steps:,.0f} steps) "
+                        f"than weekdays ({weekday_steps:,.0f} steps). "
+                        "Adding short walking breaks during the work week can significantly "
+                        "reduce sedentary time and improve metabolic health."
+                    ),
+                    "icon": "🏖️",
+                    "kind": "neutral",
+                })
+
+    # ── Steps ↔ active calories correlation ──────────────────────────────────
+    if not steps_df.empty and not kcal_df.empty:
+        sc = steps_df.merge(kcal_df, on="day", how="inner")
+        if len(sc) >= min_days:
+            corr_sc = sc["steps"].corr(sc["active_kcal"])
+            if not math.isnan(corr_sc) and corr_sc >= 0.7:
+                insights.append({
+                    "title": "Steps drive your calorie burn 🔗",
+                    "body": (
+                        f"Steps and active calorie burn are strongly correlated "
+                        f"(r={corr_sc:.2f}). "
+                        "Daily walking is your most reliable lever for increasing "
+                        "total energy expenditure."
+                    ),
+                    "icon": "🔗",
+                    "kind": "info",
+                })
 
     # ── No-insight fallback ───────────────────────────────────────────────────
     if not insights:
