@@ -5,12 +5,15 @@ import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
 from apple_health_dashboard.services.filters import apply_date_filter
-from apple_health_dashboard.services.stats import summarize_by_day_agg, to_dataframe
+from apple_health_dashboard.services.stats import summarize_by_day_agg
 from apple_health_dashboard.services.streaks import daily_streak, longest_streak, personal_bests
 from apple_health_dashboard.services.units import normalize_units
-from apple_health_dashboard.storage.sqlite_store import init_db, iter_records, open_db
 from apple_health_dashboard.web.charts import area_chart, line_chart
-from apple_health_dashboard.web.page_utils import sidebar_date_filter
+from apple_health_dashboard.web.page_utils import (
+    load_all_records,
+    page_header,
+    sidebar_date_filter,
+)
 
 st.set_page_config(
     page_title="Activity · Apple Health Dashboard",
@@ -18,9 +21,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("<style>.block-container{padding-top:1.5rem}</style>", unsafe_allow_html=True)
-st.title("🏃 Activity")
-st.caption("Steps, distance, active energy, exercise time & more.")
+page_header("🏃", "Activity", "Steps, distance, active energy, exercise time & more.")
 
 db_path = default_db_path()
 
@@ -39,19 +40,14 @@ ACTIVITY_METRICS = [
 ]
 
 with st.spinner("Loading activity data…"):
-    con = open_db(db_path)
-    try:
-        init_db(con)
-        df = to_dataframe(list(iter_records(con)))
-    finally:
-        con.close()
+    df = load_all_records(str(db_path))
 
 if df.empty:
     st.warning("No data found. Please import your Apple Health export on the Home page.")
     st.page_link("app.py", label="Go to Home →", icon="🏠")
     st.stop()
 
-date_filter = sidebar_date_filter(df)
+date_filter = sidebar_date_filter(df, current="Activity")
 if date_filter is None:
     st.warning("Could not determine date range.")
     st.stop()

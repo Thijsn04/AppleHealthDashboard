@@ -80,19 +80,19 @@ def line_chart(
 ) -> alt.Chart:
     """A line chart. Supports multiple y columns (via fold) or optional rolling average."""
     if isinstance(y, list):
-        # Multiple series
-        melted = df.melt(id_vars=[x], value_vars=y, var_name="metric", value_name="value")
+        # Multiple series — use a safe value_name that won't clash with any existing column
+        melted = df.melt(id_vars=[x], value_vars=y, var_name="metric", value_name="_val")
         chart = (
             alt.Chart(melted)
             .mark_line(strokeWidth=2)
             .encode(
                 x=alt.X(f"{x}:T", axis=alt.Axis(labelAngle=-30, title="")),
-                y=alt.Y("value:Q", axis=alt.Axis(title=y_title)),
+                y=alt.Y("_val:Q", axis=alt.Axis(title=y_title)),
                 color=alt.Color("metric:N"),
                 tooltip=[
                     alt.Tooltip(f"{x}:T", title="Date"),
                     alt.Tooltip("metric:N"),
-                    alt.Tooltip("value:Q", format=".1f"),
+                    alt.Tooltip("_val:Q", format=".1f"),
                 ],
             )
             .properties(title=title, height=height)

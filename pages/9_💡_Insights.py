@@ -1,4 +1,3 @@
-"""Insights page — cross-metric analysis that connects the dots."""
 from __future__ import annotations
 
 import pandas as pd
@@ -16,16 +15,13 @@ from apple_health_dashboard.services.insights import (
     steps_sleep_pairs,
     workout_recovery_pairs,
 )
-from apple_health_dashboard.services.stats import to_dataframe
-from apple_health_dashboard.services.workouts import workouts_to_dataframe
-from apple_health_dashboard.storage.sqlite_store import (
-    init_db,
-    iter_records,
-    iter_workouts,
-    open_db,
-)
 from apple_health_dashboard.web.charts import line_chart, scatter_chart
-from apple_health_dashboard.web.page_utils import require_data, sidebar_date_filter
+from apple_health_dashboard.web.page_utils import (
+    load_all_records,
+    load_all_workouts,
+    page_header,
+    sidebar_date_filter,
+)
 
 st.set_page_config(
     page_title="Insights · Apple Health Dashboard",
@@ -33,48 +29,25 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown(
-    """
-<style>
-.block-container { padding-top: 1.5rem; }
-.insight-card {
-  padding: 14px 18px; border-radius: 14px; margin-bottom: 10px;
-  border-left: 4px solid;
-}
-.insight-positive { background: rgba(16,185,129,0.07); border-color: #10B981; }
-.insight-negative { background: rgba(239,68,68,0.07);  border-color: #EF4444; }
-.insight-neutral  { background: rgba(245,158,11,0.07); border-color: #F59E0B; }
-.insight-info     { background: rgba(59,130,246,0.07); border-color: #3B82F6; }
-.insight-title { font-weight: 700; font-size: 1.05rem; margin-bottom: 4px; }
-.insight-body  { font-size: 0.92rem; opacity: 0.85; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-st.title("💡 Insights")
-st.caption(
+page_header(
+    "💡",
+    "Insights",
     "Cross-metric analysis — connecting sleep, heart, activity and workouts "
-    "to surface patterns Apple Health doesn't show you."
+    "to surface patterns Apple Health doesn't show you.",
 )
 
 db_path = default_db_path()
 
 with st.spinner("Loading data…"):
-    con = open_db(db_path)
-    try:
-        init_db(con)
-        df = to_dataframe(list(iter_records(con)))
-        wdf = workouts_to_dataframe(list(iter_workouts(con)))
-    finally:
-        con.close()
+    df = load_all_records(str(db_path))
+    wdf = load_all_workouts(str(db_path))
 
 if df.empty:
     st.warning("No data imported yet. Please go to the **Home** page and import your Apple Health export.")
     st.page_link("app.py", label="Go to Home →", icon="🏠")
     st.stop()
 
-date_filter = sidebar_date_filter(df)
+date_filter = sidebar_date_filter(df, current="Insights")
 if date_filter is None:
     st.warning("Could not determine date range from the data.")
     st.stop()

@@ -4,25 +4,21 @@ import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
-from apple_health_dashboard.services.activity_summary import activity_summaries_to_dataframe
-from apple_health_dashboard.services.body import body_summary_stats, weight_trend
 from apple_health_dashboard.services.filters import apply_date_filter
+from apple_health_dashboard.services.body import body_summary_stats, weight_trend
 from apple_health_dashboard.services.heart import heart_summary_stats, resting_hr_trend
 from apple_health_dashboard.services.sleep import sleep_consistency_stats, sleep_duration_by_day, sleep_records
 from apple_health_dashboard.services.insights import generate_insights
 from apple_health_dashboard.services.stats import summarize_by_day_agg
 from apple_health_dashboard.services.streaks import daily_streak, personal_bests
-from apple_health_dashboard.services.workouts import workouts_to_dataframe
-from apple_health_dashboard.storage.sqlite_store import (
-    init_db,
-    iter_activity_summaries,
-    iter_records,
-    iter_workouts,
-    open_db,
-)
-from apple_health_dashboard.services.stats import to_dataframe
 from apple_health_dashboard.web.charts import area_chart, line_chart
-from apple_health_dashboard.web.page_utils import require_data, sidebar_date_filter
+from apple_health_dashboard.web.page_utils import (
+    load_all_activity_summaries,
+    load_all_records,
+    load_all_workouts,
+    page_header,
+    sidebar_date_filter,
+)
 
 st.set_page_config(
     page_title="Overview · Apple Health Dashboard",
@@ -30,38 +26,15 @@ st.set_page_config(
     layout="wide",
 )
 
+page_header("📊", "Overview", "Your key health metrics at a glance.")
+
 db_path = default_db_path()
-
-# ── CSS ───────────────────────────────────────────────────────────────────────
-st.markdown(
-    """
-<style>
-.block-container { padding-top: 1.5rem; }
-.ahd-card {
-  background: rgba(46,125,110,0.06);
-  border: 1px solid rgba(46,125,110,0.18);
-  padding: 14px 18px; border-radius: 14px; margin-bottom: 6px;
-}
-.ahd-big { font-size: 2rem; font-weight: 700; color: #2E7D6E; line-height: 1.1; }
-.ahd-label { font-size: 0.8rem; opacity: 0.65; text-transform: uppercase; letter-spacing: 0.07em; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-st.title("📊 Overview")
-st.caption("Your key health metrics at a glance.")
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 with st.spinner("Loading data…"):
-    con = open_db(db_path)
-    try:
-        init_db(con)
-        df = to_dataframe(list(iter_records(con)))
-        wdf = workouts_to_dataframe(list(iter_workouts(con)))
-        adf = activity_summaries_to_dataframe(list(iter_activity_summaries(con)))
-    finally:
-        con.close()
+    df = load_all_records(str(db_path))
+    wdf = load_all_workouts(str(db_path))
+    adf = load_all_activity_summaries(str(db_path))
 
 if df.empty:
     st.warning("No data imported yet. Please go to the **Home** page and import your Apple Health export.")
@@ -69,7 +42,7 @@ if df.empty:
     st.stop()
 
 # ── Date filter ───────────────────────────────────────────────────────────────
-date_filter = sidebar_date_filter(df)
+date_filter = sidebar_date_filter(df, current="Overview")
 if date_filter is None:
     st.warning("Could not determine date range from the data.")
     st.stop()

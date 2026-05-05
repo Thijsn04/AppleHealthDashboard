@@ -4,11 +4,13 @@ import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
-from apple_health_dashboard.services.activity_summary import activity_summaries_to_dataframe
 from apple_health_dashboard.services.streaks import ring_streak
-from apple_health_dashboard.storage.sqlite_store import init_db, iter_activity_summaries, open_db
 from apple_health_dashboard.web.charts import area_chart, bar_chart, line_chart
-from apple_health_dashboard.web.page_utils import sidebar_date_filter
+from apple_health_dashboard.web.page_utils import (
+    load_all_activity_summaries,
+    page_header,
+    sidebar_nav,
+)
 
 st.set_page_config(
     page_title="Rings · Apple Health Dashboard",
@@ -16,19 +18,12 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("<style>.block-container{padding-top:1.5rem}</style>", unsafe_allow_html=True)
-st.title("🔥 Activity Rings")
-st.caption("Move, Exercise, and Stand ring progress, goals and streaks.")
+page_header("🔥", "Activity Rings", "Move, Exercise, and Stand ring progress, goals and streaks.")
 
 db_path = default_db_path()
 
 with st.spinner("Loading activity rings…"):
-    con = open_db(db_path)
-    try:
-        init_db(con)
-        adf = activity_summaries_to_dataframe(list(iter_activity_summaries(con)))
-    finally:
-        con.close()
+    adf = load_all_activity_summaries(str(db_path))
 
 if adf.empty:
     st.warning(
@@ -46,6 +41,8 @@ proxy_df["type"] = "ring"
 from apple_health_dashboard.services.filters import infer_date_filter, DateFilter
 
 with st.sidebar:
+    sidebar_nav(current="Rings")
+    st.divider()
     st.markdown("### 📅 Date Range")
     preset = st.selectbox("Preset", ["All", "7D", "30D", "90D", "180D", "1Y"], index=3)
     preset_filter = infer_date_filter(proxy_df, preset=preset)

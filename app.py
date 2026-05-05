@@ -16,7 +16,7 @@ from apple_health_dashboard.storage.sqlite_store import (
     list_record_types,
     open_db,
 )
-from apple_health_dashboard.web.ui import apply_base_ui, info_card, Brand
+from apple_health_dashboard.web.page_utils import inject_global_css, sidebar_nav
 
 logger = logging.getLogger(__name__)
 
@@ -72,50 +72,27 @@ def main() -> None:
         page_icon="🍎",
         layout="wide",
     )
-
-    st.markdown(
-        """
-<style>
-.block-container { padding-top: 2rem; padding-bottom: 2rem; }
-h1, h2, h3 { letter-spacing: -0.01em; }
-.ahd-card {
-  background: rgba(46, 125, 110, 0.06);
-  border: 1px solid rgba(46, 125, 110, 0.18);
-  padding: 16px 20px;
-  border-radius: 14px;
-  margin-bottom: 8px;
-}
-.ahd-muted { opacity: 0.85; font-size: 0.9rem; }
-hr { margin: 1.2rem 0; opacity: 0.25; }
-[data-testid="stDataFrame"] { border-radius: 12px; }
-.stat-num { font-size: 2rem; font-weight: 700; color: #2E7D6E; }
-.stat-label { font-size: 0.82rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.06em; }
-</style>
-""",
-        unsafe_allow_html=True,
-    )
-
-    # ── Header ───────────────────────────────────────────────────────────────
-    col_title, col_badge = st.columns([3, 1])
-    with col_title:
-        st.title("🍎 Apple Health Dashboard")
-        st.caption("100% local · privacy-first · all your health data in one place")
+    inject_global_css()
 
     db_path = default_db_path()
     stats = _db_stats(db_path)
 
-    # ── Sidebar ──────────────────────────────────────────────────────────────
+    # ── Sidebar ───────────────────────────────────────────────────────────────
     with st.sidebar:
-        st.header("📥 Import Data")
-        st.write(
-            "Upload your **export.xml** or **export.zip** from the Apple Health app."
+        sidebar_nav(current="Home")
+        st.divider()
+
+        st.markdown("#### 📥 Import Data")
+        st.caption(
+            "Upload your **export.xml** or **export.zip** from the Apple Health app.  \n"
+            "*How to export:* Health → Profile → Export All Health Data"
         )
-        st.caption("*How to export:* Apple Health → Profile → Export All Health Data")
 
         uploaded = st.file_uploader(
             "Choose file",
             type=["xml", "zip"],
             accept_multiple_files=False,
+            label_visibility="collapsed",
         )
 
         export_xml_path: Path | None = None
@@ -128,9 +105,7 @@ hr { margin: 1.2rem 0; opacity: 0.25; }
                     st.error(str(e))
             else:
                 export_xml_path = saved_path
-            st.success(f"✓ File loaded: {saved_path.name}")
-
-        st.divider()
+            st.success(f"✓ {saved_path.name}")
 
         col_a, col_b = st.columns(2)
         with col_a:
@@ -144,18 +119,31 @@ hr { margin: 1.2rem 0; opacity: 0.25; }
             refresh_clicked = st.button("Refresh", use_container_width=True)
 
         st.caption(f"Database: `{db_path.name}`")
-
         st.divider()
 
         with st.expander("🗑️ Delete local data", expanded=False):
-            st.write(
-                "Permanently delete all locally stored data (database + temporary files)."
-            )
+            st.caption("Permanently delete all locally stored data (database + temporary files).")
             confirm = st.checkbox("Yes, delete everything")
             if st.button("Delete", type="secondary", disabled=not confirm):
                 delete_local_data()
                 st.success("Local data deleted.")
                 st.rerun()
+
+    # ── Hero header ───────────────────────────────────────────────────────────
+    st.markdown(
+        """<div style="padding:20px 0 18px 0;
+                       border-bottom:1.5px solid rgba(46,125,110,0.14);
+                       margin-bottom:1.6rem;">
+  <div style="font-size:2rem;font-weight:800;letter-spacing:-0.028em;
+              color:#0D2822;line-height:1.2;">
+    🍎&nbsp;Apple Health Dashboard
+  </div>
+  <div style="margin-top:5px;font-size:0.92rem;color:#12312B;opacity:0.55;">
+    100% local &nbsp;·&nbsp; privacy-first &nbsp;·&nbsp; all your health data in one place
+  </div>
+</div>""",
+        unsafe_allow_html=True,
+    )
 
     # ── Import ────────────────────────────────────────────────────────────────
     if export_xml_path is not None and import_clicked:
@@ -199,8 +187,12 @@ hr { margin: 1.2rem 0; opacity: 0.25; }
         st.toast("Cache cleared — data reloaded")
         stats = _db_stats(db_path)
 
-    # ── Info cards ───────────────────────────────────────────────────────────
-    st.subheader("Your Data at a Glance")
+    # ── Stats row ─────────────────────────────────────────────────────────────
+    st.markdown(
+        "<div style='font-size:1.05rem;font-weight:700;color:#0D2822;"
+        "letter-spacing:-0.01em;margin-bottom:12px;'>Your Data at a Glance</div>",
+        unsafe_allow_html=True,
+    )
 
     if stats:
         c1, c2, c3, c4 = st.columns(4)
@@ -210,60 +202,77 @@ hr { margin: 1.2rem 0; opacity: 0.25; }
         c4.metric("Record Types", f"{stats.get('record_types', 0):,}")
     else:
         st.info(
-            "No data imported yet. Upload your Apple Health export and click **Import →**"
+            "No data imported yet. Upload your Apple Health export and click **Import →** in the sidebar."
         )
 
     st.divider()
 
     # ── Navigation cards ─────────────────────────────────────────────────────
-    st.subheader("Explore your health data")
-    st.caption("Use the sidebar to navigate between pages, or click a card below.")
+    st.markdown(
+        "<div style='font-size:1.05rem;font-weight:700;color:#0D2822;"
+        "letter-spacing:-0.01em;margin-bottom:4px;'>Explore your health data</div>",
+        unsafe_allow_html=True,
+    )
+    st.caption("Select a section below to dive into your data.")
 
     nav = [
-        ("📊 Overview", "pages/1_📊_Overview.py", "Key metrics, trends & highlights at a glance."),
-        ("❤️ Heart Health", "pages/2_❤️_Heart.py", "HR, HRV, VO₂ max, blood pressure & SpO₂."),
-        ("🏃 Activity", "pages/3_🏃_Activity.py", "Steps, distance, calories & active minutes."),
-        ("😴 Sleep", "pages/4_😴_Sleep.py", "Sleep stages, duration & consistency."),
-        ("🏋️ Workouts", "pages/5_🏋️_Workouts.py", "All workout types, personal records & streaks."),
-        ("🔥 Rings", "pages/6_🔥_Rings.py", "Activity ring completion, goals & streaks."),
-        ("⚖️ Body", "pages/7_⚖️_Body.py", "Weight, BMI, body fat & composition trends."),
-        ("🔬 Explorer", "pages/8_🔬_Explorer.py", "Browse & filter all raw health data."),
+        ("📊", "Overview", "pages/1_📊_Overview.py",
+         "Key metrics, trends & highlights at a glance."),
+        ("❤️", "Heart Health", "pages/2_❤️_Heart.py",
+         "HR, HRV, VO₂ max, blood pressure & SpO₂."),
+        ("🏃", "Activity", "pages/3_🏃_Activity.py",
+         "Steps, distance, calories & active minutes."),
+        ("😴", "Sleep", "pages/4_😴_Sleep.py",
+         "Sleep stages, duration & consistency."),
+        ("🏋️", "Workouts", "pages/5_🏋️_Workouts.py",
+         "All workout types, personal records & streaks."),
+        ("🔥", "Rings", "pages/6_🔥_Rings.py",
+         "Activity ring completion, goals & streaks."),
+        ("⚖️", "Body", "pages/7_⚖️_Body.py",
+         "Weight, BMI, body fat & composition trends."),
+        ("🔬", "Explorer", "pages/8_🔬_Explorer.py",
+         "Browse & filter all raw health data."),
+        ("💡", "Insights", "pages/9_💡_Insights.py",
+         "Cross-metric analysis that connects the dots."),
     ]
 
-    for i in range(0, len(nav), 4):
-        cols = st.columns(4)
-        for j, (title, page, desc) in enumerate(nav[i : i + 4]):
-            with cols[j]:
+    for i in range(0, len(nav), 3):
+        row_items = nav[i: i + 3]
+        cols = st.columns(len(row_items))
+        for col, (icon, name, page, desc) in zip(cols, row_items, strict=False):
+            with col:
                 st.markdown(
-                    f"""
-<div class="ahd-card">
-  <div style="font-weight: 650; font-size: 1rem; margin-bottom: 6px;">{title}</div>
-  <div class="ahd-muted">{desc}</div>
-</div>
-""",
+                    f"""<div class="ahd-nav-card">
+  <div class="ahd-nav-card-title">{icon} {name}</div>
+  <div class="ahd-nav-card-desc">{desc}</div>
+</div>""",
                     unsafe_allow_html=True,
                 )
+                st.page_link(page, label=f"Open {name} →")
 
     st.divider()
 
-    # ── Privacy note ──────────────────────────────────────────────────────────
+    # ── Feature cards ─────────────────────────────────────────────────────────
     c1, c2, c3 = st.columns(3)
-    with c1:
-        info_card(
-            "🔒 Privacy-first",
-            "Your export is never uploaded anywhere. Everything stays on your machine.",
-        )
-    with c2:
-        info_card(
-            "⚡ Fast reloads",
-            "Data is stored in SQLite locally — reloading is instant after the first import.",
-        )
-    with c3:
-        info_card(
-            "📈 Deep insights",
-            "From sleep stages to VO₂ max trends, explore every corner of your health data.",
-        )
+    _features = [
+        ("🔒", "Privacy-first",
+         "Your export is never uploaded anywhere. Everything stays on your machine."),
+        ("⚡", "Fast reloads",
+         "Data is stored in SQLite locally — reloading is instant after the first import."),
+        ("📈", "Deep insights",
+         "From sleep stages to VO₂ max trends, explore every corner of your health data."),
+    ]
+    for col, (icon, title, body) in zip([c1, c2, c3], _features, strict=False):
+        with col:
+            st.markdown(
+                f"""<div class="ahd-card">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:6px;">{icon} {title}</div>
+  <div class="ahd-muted">{body}</div>
+</div>""",
+                unsafe_allow_html=True,
+            )
 
 
 if __name__ == "__main__":
     main()
+

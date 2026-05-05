@@ -25,7 +25,7 @@ from apple_health_dashboard.storage.sqlite_store import (
     query_records_page,
 )
 from apple_health_dashboard.web.charts import area_chart, bar_chart, line_chart
-from apple_health_dashboard.web.page_utils import sidebar_date_filter
+from apple_health_dashboard.web.page_utils import page_header, sidebar_nav
 
 st.set_page_config(
     page_title="Explorer · Apple Health Dashboard",
@@ -33,9 +33,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("<style>.block-container{padding-top:1.5rem}</style>", unsafe_allow_html=True)
-st.title("🔬 Data Explorer")
-st.caption("Browse, filter and analyze any Apple Health record type.")
+page_header("🔬", "Data Explorer", "Browse, filter and analyze any Apple Health record type.")
 
 db_path = default_db_path()
 
@@ -73,6 +71,8 @@ display_to_rt = {v: k for k, v in type_display_map.items()}
 
 # ── Sidebar: record type picker ───────────────────────────────────────────────
 with st.sidebar:
+    sidebar_nav(current="Explorer")
+    st.divider()
     st.markdown("### 🔬 Record Type")
 
     # Category filter

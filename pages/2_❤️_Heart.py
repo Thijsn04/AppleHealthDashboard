@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
@@ -24,11 +23,13 @@ from apple_health_dashboard.services.heart import (
     DIASTOLIC_TYPE,
     SPO2_TYPE,
 )
-from apple_health_dashboard.services.stats import to_dataframe
 from apple_health_dashboard.services.streaks import daily_streak, longest_streak
-from apple_health_dashboard.storage.sqlite_store import init_db, iter_records, open_db
 from apple_health_dashboard.web.charts import area_chart, bar_chart, donut_chart, line_chart
-from apple_health_dashboard.web.page_utils import sidebar_date_filter
+from apple_health_dashboard.web.page_utils import (
+    load_all_records,
+    page_header,
+    sidebar_date_filter,
+)
 
 st.set_page_config(
     page_title="Heart Health · Apple Health Dashboard",
@@ -36,23 +37,12 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown(
-    "<style>.block-container{padding-top:1.5rem}</style>",
-    unsafe_allow_html=True,
-)
-
-st.title("❤️ Heart Health")
-st.caption("Heart rate, HRV, VO₂ max, blood pressure & blood oxygen.")
+page_header("❤️", "Heart Health", "Heart rate, HRV, VO₂ max, blood pressure & blood oxygen.")
 
 db_path = default_db_path()
 
 with st.spinner("Loading heart data…"):
-    con = open_db(db_path)
-    try:
-        init_db(con)
-        df = to_dataframe(list(iter_records(con)))
-    finally:
-        con.close()
+    df = load_all_records(str(db_path))
 
 if df.empty:
     st.warning("No data found. Please import your Apple Health export on the Home page.")
@@ -60,7 +50,7 @@ if df.empty:
     st.stop()
 
 # ── Date filter ───────────────────────────────────────────────────────────────
-date_filter = sidebar_date_filter(df)
+date_filter = sidebar_date_filter(df, current="Heart")
 if date_filter is None:
     st.warning("Could not determine date range.")
     st.stop()
