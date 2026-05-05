@@ -437,8 +437,6 @@ def workout_duration_trend(wdf: pd.DataFrame, window: int = 7) -> pd.DataFrame:
     return wdf2[["day", "duration_min", "duration_rolling"]]
 
 
-
-
 def cross_metric_daily_table(df: pd.DataFrame, wdf: pd.DataFrame) -> pd.DataFrame:
     """Build a daily table of key metrics suitable for a correlation matrix.
 

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
 from apple_health_dashboard.services.filters import apply_date_filter
+from apple_health_dashboard.services.heart import hrv_trend as _hrv_trend
 from apple_health_dashboard.services.insights import (
     active_energy_pairs,
     circadian_profile,
@@ -522,8 +524,6 @@ else:
 st.divider()
 
 # ── Step Momentum ─────────────────────────────────────────────────────────────
-import altair as alt  # noqa: E402
-
 st.markdown("## 🏃 Step Momentum")
 st.caption(
     "Daily step count with a 7-day rolling average to reveal your activity trend. "
@@ -857,8 +857,6 @@ st.caption(
     "A wide, right-skewed distribution (peak at higher values) is a sign of "
     "good fitness and recovery."
 )
-
-from apple_health_dashboard.services.heart import hrv_trend as _hrv_trend  # noqa: E402
 
 hrv_dist_df = _hrv_trend(df_f)
 if hrv_dist_df.empty or len(hrv_dist_df) < 14:
