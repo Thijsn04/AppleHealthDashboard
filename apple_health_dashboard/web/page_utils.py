@@ -295,19 +295,27 @@ _NAV_PAGES = [
 
 
 def sidebar_nav(*, current: str = "") -> None:
-    """Render page navigation links inside the sidebar."""
-    st.markdown("### 🗺️ Navigation")
+    """Render branded page navigation inside the sidebar."""
+    st.markdown(
+        """<div style="display:flex;align-items:center;gap:9px;
+                       padding:4px 0 12px 0;
+                       border-bottom:1px solid rgba(46,125,110,0.14);
+                       margin-bottom:6px;">
+          <span style="font-size:1.35rem;line-height:1;">🍎</span>
+          <span style="font-size:0.95rem;font-weight:800;color:#0D2822;
+                       letter-spacing:-0.022em;line-height:1.2;">Apple Health</span>
+        </div>""",
+        unsafe_allow_html=True,
+    )
     for icon, label, page in _NAV_PAGES:
         is_current = label == current
         if is_current:
             st.markdown(
-                f"<div style='padding:4px 8px;border-radius:8px;"
-                f"background:rgba(46,125,110,0.15);font-weight:700;margin-bottom:2px;'>"
-                f"{icon} {label}</div>",
+                f'<div class="ahd-nav-active">{icon}&nbsp;&nbsp;{label}</div>',
                 unsafe_allow_html=True,
             )
         else:
-            st.page_link(page, label=f"{icon} {label}")
+            st.page_link(page, label=f"{icon}  {label}")
 
 
 def require_data(db_path: Path) -> pd.DataFrame | None:

@@ -14,7 +14,7 @@ from apple_health_dashboard.services.workouts import (
 from apple_health_dashboard.web.charts import area_chart, bar_chart, line_chart
 from apple_health_dashboard.web.page_utils import (
     load_all_workouts,
-    sidebar_date_filter,
+    page_header,
     sidebar_nav,
 )
 
@@ -24,9 +24,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("<style>.block-container{padding-top:1.5rem}</style>", unsafe_allow_html=True)
-st.title("🏋️ Workouts")
-st.caption("All workout types, personal records, weekly trends and calendar view.")
+page_header("🏋️", "Workouts", "All workout types, personal records, weekly trends and calendar view.")
 
 db_path = default_db_path()
 
@@ -47,6 +45,8 @@ from apple_health_dashboard.services.filters import infer_date_filter, DateFilte
 from apple_health_dashboard.services.stats import to_dataframe
 
 with st.sidebar:
+    sidebar_nav(current="Workouts")
+    st.divider()
     st.markdown("### 📅 Date Range")
     preset = st.selectbox("Preset", ["All", "7D", "30D", "90D", "180D", "1Y"], index=3)
     preset_filter = infer_date_filter(_date_df, preset=preset)
@@ -69,8 +69,6 @@ with st.sidebar:
             date_filter = preset_filter
     else:
         date_filter = preset_filter
-    st.divider()
-    sidebar_nav(current="Workouts")
 
 # Filter workouts
 wdf_f = wdf[(wdf["start_at"] >= date_filter.start) & (wdf["start_at"] <= date_filter.end)].copy()

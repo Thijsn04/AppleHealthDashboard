@@ -1,4 +1,3 @@
-"""Insights page — cross-metric analysis that connects the dots."""
 from __future__ import annotations
 
 import pandas as pd
@@ -20,8 +19,8 @@ from apple_health_dashboard.web.charts import line_chart, scatter_chart
 from apple_health_dashboard.web.page_utils import (
     load_all_records,
     load_all_workouts,
+    page_header,
     sidebar_date_filter,
-    sidebar_nav,
 )
 
 st.set_page_config(
@@ -30,29 +29,11 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown(
-    """
-<style>
-.block-container { padding-top: 1.5rem; }
-.insight-card {
-  padding: 14px 18px; border-radius: 14px; margin-bottom: 10px;
-  border-left: 4px solid;
-}
-.insight-positive { background: rgba(16,185,129,0.07); border-color: #10B981; }
-.insight-negative { background: rgba(239,68,68,0.07);  border-color: #EF4444; }
-.insight-neutral  { background: rgba(245,158,11,0.07); border-color: #F59E0B; }
-.insight-info     { background: rgba(59,130,246,0.07); border-color: #3B82F6; }
-.insight-title { font-weight: 700; font-size: 1.05rem; margin-bottom: 4px; }
-.insight-body  { font-size: 0.92rem; opacity: 0.85; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-st.title("💡 Insights")
-st.caption(
+page_header(
+    "💡",
+    "Insights",
     "Cross-metric analysis — connecting sleep, heart, activity and workouts "
-    "to surface patterns Apple Health doesn't show you."
+    "to surface patterns Apple Health doesn't show you.",
 )
 
 db_path = default_db_path()
@@ -66,14 +47,10 @@ if df.empty:
     st.page_link("app.py", label="Go to Home →", icon="🏠")
     st.stop()
 
-date_filter = sidebar_date_filter(df)
+date_filter = sidebar_date_filter(df, current="Insights")
 if date_filter is None:
     st.warning("Could not determine date range from the data.")
     st.stop()
-
-with st.sidebar:
-    st.divider()
-    sidebar_nav(current="Insights")
 
 df_f = apply_date_filter(df, date_filter)
 if not wdf.empty and "start_at" in wdf.columns:

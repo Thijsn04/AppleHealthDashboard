@@ -19,8 +19,8 @@ from apple_health_dashboard.services.filters import apply_date_filter
 from apple_health_dashboard.web.charts import area_chart, line_chart, scatter_chart
 from apple_health_dashboard.web.page_utils import (
     load_all_records,
+    page_header,
     sidebar_date_filter,
-    sidebar_nav,
 )
 
 st.set_page_config(
@@ -29,9 +29,9 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("<style>.block-container{padding-top:1.5rem}</style>", unsafe_allow_html=True)
-st.title("⚖️ Body")
-st.caption("Weight, BMI, body fat percentage, lean mass and composition trends.")
+page_header("⚖️", "Body", "Weight, BMI, body fat percentage, lean mass and composition trends.")
+
+db_path = default_db_path()
 
 db_path = default_db_path()
 
@@ -43,14 +43,10 @@ if df.empty:
     st.page_link("app.py", label="Go to Home →", icon="🏠")
     st.stop()
 
-date_filter = sidebar_date_filter(df)
+date_filter = sidebar_date_filter(df, current="Body")
 if date_filter is None:
     st.warning("Could not determine date range.")
     st.stop()
-
-with st.sidebar:
-    st.divider()
-    sidebar_nav(current="Body")
 
 df_f = apply_date_filter(df, date_filter)
 

@@ -11,8 +11,8 @@ from apple_health_dashboard.services.units import normalize_units
 from apple_health_dashboard.web.charts import area_chart, line_chart
 from apple_health_dashboard.web.page_utils import (
     load_all_records,
+    page_header,
     sidebar_date_filter,
-    sidebar_nav,
 )
 
 st.set_page_config(
@@ -21,9 +21,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("<style>.block-container{padding-top:1.5rem}</style>", unsafe_allow_html=True)
-st.title("🏃 Activity")
-st.caption("Steps, distance, active energy, exercise time & more.")
+page_header("🏃", "Activity", "Steps, distance, active energy, exercise time & more.")
 
 db_path = default_db_path()
 
@@ -49,14 +47,10 @@ if df.empty:
     st.page_link("app.py", label="Go to Home →", icon="🏠")
     st.stop()
 
-date_filter = sidebar_date_filter(df)
+date_filter = sidebar_date_filter(df, current="Activity")
 if date_filter is None:
     st.warning("Could not determine date range.")
     st.stop()
-
-with st.sidebar:
-    st.divider()
-    sidebar_nav(current="Activity")
 
 df_f = apply_date_filter(df, date_filter)
 available_types = set(df_f["type"].unique()) if not df_f.empty else set()

@@ -8,7 +8,7 @@ from apple_health_dashboard.services.streaks import ring_streak
 from apple_health_dashboard.web.charts import area_chart, bar_chart, line_chart
 from apple_health_dashboard.web.page_utils import (
     load_all_activity_summaries,
-    sidebar_date_filter,
+    page_header,
     sidebar_nav,
 )
 
@@ -18,9 +18,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("<style>.block-container{padding-top:1.5rem}</style>", unsafe_allow_html=True)
-st.title("🔥 Activity Rings")
-st.caption("Move, Exercise, and Stand ring progress, goals and streaks.")
+page_header("🔥", "Activity Rings", "Move, Exercise, and Stand ring progress, goals and streaks.")
 
 db_path = default_db_path()
 
@@ -43,6 +41,8 @@ proxy_df["type"] = "ring"
 from apple_health_dashboard.services.filters import infer_date_filter, DateFilter
 
 with st.sidebar:
+    sidebar_nav(current="Rings")
+    st.divider()
     st.markdown("### 📅 Date Range")
     preset = st.selectbox("Preset", ["All", "7D", "30D", "90D", "180D", "1Y"], index=3)
     preset_filter = infer_date_filter(proxy_df, preset=preset)
@@ -65,8 +65,6 @@ with st.sidebar:
             date_filter = preset_filter
     else:
         date_filter = preset_filter
-    st.divider()
-    sidebar_nav(current="Rings")
 
 # Filter by date (day column is tz-naive)
 adf_f = adf[

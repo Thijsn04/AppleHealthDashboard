@@ -18,8 +18,8 @@ from apple_health_dashboard.services.sleep import (
 from apple_health_dashboard.web.charts import area_chart, bar_chart, stacked_bar_chart
 from apple_health_dashboard.web.page_utils import (
     load_all_records,
+    page_header,
     sidebar_date_filter,
-    sidebar_nav,
 )
 
 st.set_page_config(
@@ -28,9 +28,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("<style>.block-container{padding-top:1.5rem}</style>", unsafe_allow_html=True)
-st.title("😴 Sleep")
-st.caption("Sleep duration, stages, consistency and trends.")
+page_header("😴", "Sleep", "Sleep duration, stages, consistency and trends.")
 
 db_path = default_db_path()
 
@@ -42,14 +40,10 @@ if df.empty:
     st.page_link("app.py", label="Go to Home →", icon="🏠")
     st.stop()
 
-date_filter = sidebar_date_filter(df)
+date_filter = sidebar_date_filter(df, current="Sleep")
 if date_filter is None:
     st.warning("Could not determine date range.")
     st.stop()
-
-with st.sidebar:
-    st.divider()
-    sidebar_nav(current="Sleep")
 
 df_f = apply_date_filter(df, date_filter)
 srec = sleep_records(df_f)

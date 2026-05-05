@@ -16,8 +16,8 @@ from apple_health_dashboard.web.page_utils import (
     load_all_activity_summaries,
     load_all_records,
     load_all_workouts,
+    page_header,
     sidebar_date_filter,
-    sidebar_nav,
 )
 
 st.set_page_config(
@@ -26,27 +26,9 @@ st.set_page_config(
     layout="wide",
 )
 
+page_header("📊", "Overview", "Your key health metrics at a glance.")
+
 db_path = default_db_path()
-
-# ── CSS ───────────────────────────────────────────────────────────────────────
-st.markdown(
-    """
-<style>
-.block-container { padding-top: 1.5rem; }
-.ahd-card {
-  background: rgba(46,125,110,0.06);
-  border: 1px solid rgba(46,125,110,0.18);
-  padding: 14px 18px; border-radius: 14px; margin-bottom: 6px;
-}
-.ahd-big { font-size: 2rem; font-weight: 700; color: #2E7D6E; line-height: 1.1; }
-.ahd-label { font-size: 0.8rem; opacity: 0.65; text-transform: uppercase; letter-spacing: 0.07em; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-st.title("📊 Overview")
-st.caption("Your key health metrics at a glance.")
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 with st.spinner("Loading data…"):
@@ -60,7 +42,7 @@ if df.empty:
     st.stop()
 
 # ── Date filter ───────────────────────────────────────────────────────────────
-date_filter = sidebar_date_filter(df)
+date_filter = sidebar_date_filter(df, current="Overview")
 if date_filter is None:
     st.warning("Could not determine date range from the data.")
     st.stop()
@@ -71,8 +53,6 @@ period_label = f"{date_filter.start.date()} → {date_filter.end.date()}"
 with st.sidebar:
     st.caption(f"Showing: **{period_label}**")
     st.caption(f"Records in range: **{len(df_f):,}**")
-    st.divider()
-    sidebar_nav(current="Overview")
 
 # ── Step count summary ────────────────────────────────────────────────────────
 STEP_TYPE = "HKQuantityTypeIdentifierStepCount"

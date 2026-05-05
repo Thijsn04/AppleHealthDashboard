@@ -27,8 +27,8 @@ from apple_health_dashboard.services.streaks import daily_streak, longest_streak
 from apple_health_dashboard.web.charts import area_chart, bar_chart, donut_chart, line_chart
 from apple_health_dashboard.web.page_utils import (
     load_all_records,
+    page_header,
     sidebar_date_filter,
-    sidebar_nav,
 )
 
 st.set_page_config(
@@ -37,13 +37,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown(
-    "<style>.block-container{padding-top:1.5rem}</style>",
-    unsafe_allow_html=True,
-)
-
-st.title("❤️ Heart Health")
-st.caption("Heart rate, HRV, VO₂ max, blood pressure & blood oxygen.")
+page_header("❤️", "Heart Health", "Heart rate, HRV, VO₂ max, blood pressure & blood oxygen.")
 
 db_path = default_db_path()
 
@@ -56,14 +50,10 @@ if df.empty:
     st.stop()
 
 # ── Date filter ───────────────────────────────────────────────────────────────
-date_filter = sidebar_date_filter(df)
+date_filter = sidebar_date_filter(df, current="Heart")
 if date_filter is None:
     st.warning("Could not determine date range.")
     st.stop()
-
-with st.sidebar:
-    st.divider()
-    sidebar_nav(current="Heart")
 
 df_f = apply_date_filter(df, date_filter)
 

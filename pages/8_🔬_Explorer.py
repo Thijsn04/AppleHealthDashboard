@@ -25,7 +25,7 @@ from apple_health_dashboard.storage.sqlite_store import (
     query_records_page,
 )
 from apple_health_dashboard.web.charts import area_chart, bar_chart, line_chart
-from apple_health_dashboard.web.page_utils import sidebar_date_filter, sidebar_nav
+from apple_health_dashboard.web.page_utils import page_header, sidebar_nav
 
 st.set_page_config(
     page_title="Explorer · Apple Health Dashboard",
@@ -33,9 +33,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("<style>.block-container{padding-top:1.5rem}</style>", unsafe_allow_html=True)
-st.title("🔬 Data Explorer")
-st.caption("Browse, filter and analyze any Apple Health record type.")
+page_header("🔬", "Data Explorer", "Browse, filter and analyze any Apple Health record type.")
 
 db_path = default_db_path()
 
@@ -73,6 +71,8 @@ display_to_rt = {v: k for k, v in type_display_map.items()}
 
 # ── Sidebar: record type picker ───────────────────────────────────────────────
 with st.sidebar:
+    sidebar_nav(current="Explorer")
+    st.divider()
     st.markdown("### 🔬 Record Type")
 
     # Category filter
@@ -160,8 +160,6 @@ with st.sidebar:
 
     order = st.selectbox("Sort", ["Newest first", "Oldest first"], index=0, key="exp_order")
     page_size = st.selectbox("Rows per page", [100, 250, 500, 1000, 2000], index=2, key="exp_ps")
-    st.divider()
-    sidebar_nav(current="Explorer")
 
 order_sql = "start_at_desc" if order == "Newest first" else "start_at_asc"
 
