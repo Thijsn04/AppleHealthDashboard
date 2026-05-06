@@ -181,12 +181,18 @@ def hr_zone_distribution(df: pd.DataFrame, *, max_hr: int = 185) -> pd.DataFrame
     if hr.empty:
         return pd.DataFrame(columns=["zone", "minutes", "pct"])
 
-    # Maximum plausible duration for a single HR reading. Apple Watch typically logs HR every
-    # 1–5 minutes; a 30-minute cap prevents outlier intervals from skewing zone totals.
-    _MAX_HR_DURATION_MIN = 30
+    hr = hr.sort_values("start_at").reset_index(drop=True)
 
-    hr["duration_min"] = (hr["end_at"] - hr["start_at"]).dt.total_seconds() / 60.0
-    hr["duration_min"] = hr["duration_min"].clip(lower=0, upper=_MAX_HR_DURATION_MIN)
+    # Apple Health often stores HR data as points (start_at == end_at).
+    # We use the recorded duration if > 0, otherwise we infer duration from the time to the NEXT reading.
+    duration_recorded = (hr["end_at"] - hr["start_at"]).dt.total_seconds() / 60.0
+    duration_inferred = (hr["start_at"].shift(-1) - hr["start_at"]).dt.total_seconds() / 60.0
+    
+    hr["duration_min"] = duration_recorded.where(duration_recorded > 0, duration_inferred)
+
+    # Cap at 5 minutes to prevent missing data gaps (e.g., watch off wrist) from inflating time
+    _MAX_GAP_MIN = 5.0
+    hr["duration_min"] = hr["duration_min"].fillna(0).clip(lower=0, upper=_MAX_GAP_MIN)
 
     zone_rows = []
     for zone_name, (lo_frac, hi_frac) in HR_ZONES.items():

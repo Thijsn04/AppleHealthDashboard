@@ -17,6 +17,7 @@ from apple_health_dashboard.services.sleep import (
 )
 from apple_health_dashboard.web.charts import area_chart, bar_chart, stacked_bar_chart
 from apple_health_dashboard.web.page_utils import (
+    sidebar_nav,
     load_all_records,
     page_header,
     sidebar_date_filter,
@@ -30,6 +31,9 @@ st.set_page_config(
 
 page_header("😴", "Sleep", "Sleep duration, stages, consistency and trends.")
 
+with st.sidebar:
+    sidebar_nav(current="Sleep")
+
 db_path = default_db_path()
 
 with st.spinner("Loading sleep data…"):
@@ -40,7 +44,7 @@ if df.empty:
     st.page_link("app.py", label="Go to Home →", icon="🏠")
     st.stop()
 
-date_filter = sidebar_date_filter(df, current="Sleep")
+date_filter = sidebar_date_filter(df)
 if date_filter is None:
     st.warning("Could not determine date range.")
     st.stop()
@@ -80,7 +84,7 @@ elif stats.get("avg_hours", 0) >= 8:
 
 st.divider()
 
-tabs = st.tabs(["Duration", "Sleep Stages", "Consistency", "Raw Data"])
+tabs = st.tabs(["Duration", "Sleep Stages", "Consistency", "Sleep Debt", "Bedtime Scatter", "Raw Data"])
 
 # ── Duration tab ──────────────────────────────────────────────────────────────
 with tabs[0]:
@@ -113,7 +117,7 @@ with tabs[0]:
                 title="Sleep Duration (yellow = 7h, green = 8h)",
                 height=280,
             ).interactive()
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width="stretch")
 
         with col_stats:
             st.markdown("**Statistics**")
@@ -142,7 +146,7 @@ with tabs[0]:
             from apple_health_dashboard.web.charts import line_chart
             st.altair_chart(
                 line_chart(roll_df, x="day", y=y_cols, y_title="Hours", height=180),
-                use_container_width=True,
+                width="stretch",
             )
     else:
         st.info("No sleep duration data could be computed for this period.")
@@ -171,10 +175,10 @@ with tabs[1]:
                 )
                 .properties(title="Stage Distribution (record count)", height=300)
             )
-            st.altair_chart(donut, use_container_width=True)
+            st.altair_chart(donut, width="stretch")
         with col_table:
             st.markdown("**Stage Counts**")
-            st.dataframe(stage_counts, use_container_width=True, hide_index=True)
+            st.dataframe(stage_counts, width="stretch", hide_index=True)
 
     # Nightly breakdown by stage
     if not stages_wide.empty:
@@ -190,7 +194,7 @@ with tabs[1]:
                     title="Sleep Stages per Night",
                     height=280,
                 ),
-                use_container_width=True,
+                width="stretch",
             )
         else:
             st.info(
@@ -204,6 +208,26 @@ with tabs[1]:
 with tabs[2]:
     st.subheader("Sleep Consistency")
     st.caption("Regular sleep timing is as important as duration.")
+
+    from apple_health_dashboard.services.sleep import sleep_timing_consistency
+    import numpy as np
+    timing_stats = sleep_timing_consistency(srec)
+    if timing_stats:
+        st.markdown("**Timing Consistency**")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Consistency Score", f"{timing_stats['consistency_score']:.0f}/100", help="Based on bedtime/waketime variance. 100 = perfect consistency.")
+        
+        def fmt_time(h):
+            if pd.isna(h): return "—"
+            h = h % 24
+            hr = int(h)
+            mn = int((h - hr) * 60)
+            return f"{hr:02d}:{mn:02d}"
+            
+        c2.metric("Avg Bedtime", fmt_time(timing_stats.get("avg_bedtime")))
+        c3.metric("Avg Waketime", fmt_time(timing_stats.get("avg_waketime")))
+        c4.metric("Bedtime Variance", f"± {timing_stats.get('bedtime_variance_h', 0) * 60:.0f} mins")
+        st.divider()
 
     if not dur.empty:
         col_dist, col_heat = st.columns(2)
@@ -227,7 +251,7 @@ with tabs[2]:
                 )
                 .properties(title="Nights at Each Duration", height=260)
             )
-            st.altair_chart(hist_chart, use_container_width=True)
+            st.altair_chart(hist_chart, width="stretch")
 
         with col_heat:
             st.markdown("**Weekly Sleep Heatmap**")
@@ -258,7 +282,7 @@ with tabs[2]:
                     )
                     .properties(title="Sleep by Day of Week & Week Number", height=240)
                 )
-                st.altair_chart(heat_chart, use_container_width=True)
+                st.altair_chart(heat_chart, width="stretch")
             else:
                 st.info("Need at least 7 days of data for the heatmap.")
 
@@ -281,10 +305,102 @@ with tabs[2]:
             .properties(title="Weekly Average Sleep Duration", height=220)
             .interactive()
         )
-        st.altair_chart(weekly_chart, use_container_width=True)
+        st.altair_chart(weekly_chart, width="stretch")
+
+# ── Sleep Debt tab ────────────────────────────────────────────────────────────
+with tabs[3]:
+    st.subheader("Sleep Debt Tracker")
+    sleep_goal_h = st.slider("Sleep goal (hours/night)", 6.0, 10.0, 8.0, 0.5, key="sleep_debt_goal")
+    if not dur.empty:
+        import altair as alt
+        debt_df = dur.copy()
+        debt_df["deficit"] = sleep_goal_h - debt_df["hours"]
+        debt_df["cumulative_debt"] = debt_df["deficit"].cumsum()
+        total_debt = float(debt_df["cumulative_debt"].iloc[-1])
+        col_d1, col_d2, col_d3 = st.columns(3)
+        col_d1.metric("Cumulative sleep debt", f"{total_debt:+.1f}h")
+        col_d2.metric("Avg nightly deficit", f"{debt_df['deficit'].mean():+.2f}h")
+        col_d3.metric("Goal", f"{sleep_goal_h}h/night")
+        if total_debt > 5:
+            st.error(f"🚨 Sleep debt: **{total_debt:.1f}h**. Recovery takes several nights of extended sleep.")
+        elif total_debt > 0:
+            st.warning(f"⚠️ Sleep debt: **{total_debt:.1f}h**. Try adding 30–60 extra minutes this week.")
+        else:
+            st.success(f"✅ No sleep debt! Surplus of **{abs(total_debt):.1f}h**.")
+        debt_chart = (
+            alt.Chart(debt_df)
+            .mark_area(line={"color": "#EF4444", "strokeWidth": 2},
+                       color=alt.Gradient(gradient="linear",
+                           stops=[alt.GradientStop(color="rgba(239,68,68,0.35)", offset=0),
+                                  alt.GradientStop(color="rgba(239,68,68,0.02)", offset=1)],
+                           x1=1, x2=1, y1=0, y2=1))
+            .encode(
+                x=alt.X("day:T", axis=alt.Axis(labelAngle=-30, title="")),
+                y=alt.Y("cumulative_debt:Q", axis=alt.Axis(title="Cumulative debt (hours)")),
+                tooltip=[alt.Tooltip("day:T", title="Date"),
+                         alt.Tooltip("cumulative_debt:Q", title="Debt (h)", format=".2f"),
+                         alt.Tooltip("hours:Q", title="Slept (h)", format=".1f")],
+            )
+            .properties(title=f"Cumulative Sleep Debt vs {sleep_goal_h}h Goal", height=280)
+            .interactive()
+        )
+        zero_line = (
+            alt.Chart(pd.DataFrame({"y": [0]}))
+            .mark_rule(strokeDash=[4, 3], color="#10B981", strokeWidth=2)
+            .encode(y=alt.Y("y:Q"))
+        )
+        st.altair_chart((debt_chart + zero_line), width="stretch")
+        st.caption("Above green line = in debt · Below = surplus.")
+    else:
+        st.info("No sleep duration data available.")
+
+# ── Bedtime Scatter tab ────────────────────────────────────────────────────────
+with tabs[4]:
+    st.subheader("Bedtime & Wake-time Patterns")
+    st.caption("How consistent is your sleep schedule? Tight clusters = good routine.")
+    from apple_health_dashboard.services.sleep import sleep_timing_consistency
+    timing = sleep_timing_consistency(srec)
+    if timing:
+        c_t1, c_t2, c_t3, c_t4 = st.columns(4)
+        c_t1.metric("Consistency score", f"{timing['consistency_score']:.0f}/100")
+        def _fmt_h(h):
+            if h is None: return "—"
+            h = h % 24; return f"{int(h):02d}:{int((h % 1)*60):02d}"
+        c_t2.metric("Avg bedtime", _fmt_h(timing.get("avg_bedtime")))
+        c_t3.metric("Avg wake time", _fmt_h(timing.get("avg_waketime")))
+        c_t4.metric("Bedtime variance", f"±{timing.get('bedtime_variance_h', 0)*60:.0f} min")
+    if "start_at" in srec.columns and "end_at" in srec.columns and not srec.empty:
+        import altair as alt
+        scat_df = srec.copy()
+        scat_df["night"] = scat_df["start_at"].dt.floor("D").dt.strftime("%Y-%m-%d")
+        nightly_bed = scat_df.groupby("night")["start_at"].min().reset_index()
+        nightly_wake = scat_df.groupby("night")["end_at"].max().reset_index()
+        nightly = nightly_bed.merge(nightly_wake, on="night")
+        nightly["bed_h"] = nightly["start_at"].dt.hour + nightly["start_at"].dt.minute / 60
+        nightly["wake_h"] = nightly["end_at"].dt.hour + nightly["end_at"].dt.minute / 60
+        nightly["date"] = pd.to_datetime(nightly["night"])
+        if not nightly.empty:
+            chart = (
+                alt.Chart(nightly)
+                .mark_circle(size=55, opacity=0.7)
+                .encode(
+                    x=alt.X("wake_h:Q", axis=alt.Axis(title="Wake time (hour)")),
+                    y=alt.Y("bed_h:Q", axis=alt.Axis(title="Bedtime (hour)")),
+                    color=alt.Color("date:T", scale=alt.Scale(scheme="viridis"), legend=None),
+                    tooltip=[alt.Tooltip("night:N", title="Night"),
+                             alt.Tooltip("bed_h:Q", title="Bedtime h", format=".1f"),
+                             alt.Tooltip("wake_h:Q", title="Wake h", format=".1f")],
+                )
+                .properties(title="Bedtime vs Wake time (colour = chronological order)", height=300)
+                .interactive()
+            )
+            st.altair_chart(chart, width="stretch")
+            st.caption("Tight cluster = consistent schedule. Colour: dark=early dates → light=recent.")
+    else:
+        st.info("Need sleep start/end times for this chart.")
 
 # ── Raw data tab ──────────────────────────────────────────────────────────────
-with tabs[3]:
+with tabs[5]:
     st.subheader("Raw Sleep Records")
     display_cols = ["start_at", "end_at", "value_str", "source_name"]
     display_cols = [c for c in display_cols if c in srec.columns]
@@ -300,4 +416,4 @@ with tabs[3]:
     page = st.number_input("Page", min_value=1, max_value=pages, value=1, step=1, key="sleep_page")
     start = (page - 1) * page_size
     st.caption(f"Showing {start + 1}–{min(start + page_size, total)} of {total:,} records")
-    st.dataframe(display_df.iloc[start : start + page_size], use_container_width=True)
+    st.dataframe(display_df.iloc[start : start + page_size], width="stretch")

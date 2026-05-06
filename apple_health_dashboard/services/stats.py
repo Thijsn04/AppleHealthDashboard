@@ -109,3 +109,44 @@ def summarize_by_day_agg(df: pd.DataFrame, *, agg: str) -> pd.DataFrame:
         return out
 
     raise ValueError(f"Unsupported agg: {agg}")
+
+
+def detect_outliers_zscore(df: pd.DataFrame, column: str, threshold: float = 3.0) -> pd.DataFrame:
+    """
+    Returns a copy of the DataFrame with an 'is_outlier' column using Z-score.
+    """
+    if df.empty or column not in df.columns:
+        return df.copy()
+
+    res = df.copy()
+    val = pd.to_numeric(res[column], errors="coerce")
+    mean = val.mean()
+    std = val.std()
+
+    if std == 0 or pd.isna(std):
+        res["is_outlier"] = False
+        return res
+
+    z_scores = (val - mean) / std
+    res["is_outlier"] = z_scores.abs() > threshold
+    return res
+
+
+def detect_outliers_iqr(df: pd.DataFrame, column: str, factor: float = 1.5) -> pd.DataFrame:
+    """
+    Returns a copy of the DataFrame with an 'is_outlier' column using IQR.
+    """
+    if df.empty or column not in df.columns:
+        return df.copy()
+
+    res = df.copy()
+    val = pd.to_numeric(res[column], errors="coerce")
+    q1 = val.quantile(0.25)
+    q3 = val.quantile(0.75)
+    iqr = q3 - q1
+
+    lower = q1 - factor * iqr
+    upper = q3 + factor * iqr
+
+    res["is_outlier"] = (val < lower) | (val > upper)
+    return res

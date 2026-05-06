@@ -9,14 +9,14 @@ def local_tmp_dir() -> Path:
 
 
 def local_db_path() -> Path:
-    return Path.cwd() / "health.db"
+    return Path.cwd() / "health.duckdb"
 
 
 def delete_local_data() -> None:
     """Delete local-only data artifacts.
 
     Removes:
-      - ./health.db
+      - ./health.duckdb
       - ./.tmp/
 
     Safe to call even if they don't exist.

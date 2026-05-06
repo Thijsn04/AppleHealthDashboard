@@ -95,7 +95,7 @@ c4.metric(
 
 st.divider()
 
-tabs = st.tabs(["Heart Rate", "HRV", "VO₂ Max", "Blood Pressure", "Blood Oxygen"])
+tabs = st.tabs(["Heart Rate", "HRV", "VO₂ Max", "Blood Pressure", "Blood Oxygen", "ECG"])
 
 # ── Heart Rate ────────────────────────────────────────────────────────────────
 with tabs[0]:
@@ -330,3 +330,33 @@ with tabs[4]:
             low_readings = (spo2["spo2"] < 95).sum()
             if low_readings > 0:
                 st.warning(f"⚠️ {low_readings} readings below 95%")
+
+# ── ECG ───────────────────────────────────────────────────────────────────────
+with tabs[5]:
+    st.subheader("Electrocardiogram (ECG)")
+    st.info("Apple Watch ECG recordings are typically stored as high-frequency samples. This view shows a summary of your recent recordings.")
+    
+    ecg_records = df_f[df_f["type"] == "HKDataTypeIdentifierElectrocardiogram"]
+    if ecg_records.empty:
+        st.info("No ECG recordings found in the selected period. Ensure you have recorded ECGs using the ECG app on your Apple Watch.")
+    else:
+        st.write(f"Found {len(ecg_records)} ECG recordings.")
+        st.dataframe(ecg_records[["start_at", "value"]].rename(columns={"value": "Classification"}), hide_index=True)
+        
+        st.markdown("### Waveform Simulation")
+        st.caption("Note: Raw waveform data is often contained in separate XML files in the export. Below is a representative heartbeat visualization.")
+        
+        import numpy as np
+        t = np.linspace(0, 1, 500)
+        # Simple simulated ECG-like pulse
+        pulse = np.exp(-100 * (t - 0.2)**2) * 0.8 + \
+                np.exp(-5000 * (t - 0.4)**2) * 1.5 + \
+                np.exp(-500 * (t - 0.45)**2) * -0.5 + \
+                np.exp(-100 * (t - 0.7)**2) * 0.6
+        ecg_sim = pd.DataFrame({"t": t, "mV": pulse})
+        
+        sim_chart = alt.Chart(ecg_sim).mark_line(color="#EF4444", strokeWidth=1.5).encode(
+            x=alt.X("t:Q", axis=None),
+            y=alt.Y("mV:Q", axis=None)
+        ).properties(height=150, title="Simulated Single Heartbeat Cycle")
+        st.altair_chart(sim_chart, use_container_width=True)

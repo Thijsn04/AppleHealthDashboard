@@ -9,7 +9,9 @@ from apple_health_dashboard.services.stats import summarize_by_day_agg
 from apple_health_dashboard.services.streaks import daily_streak, longest_streak, personal_bests
 from apple_health_dashboard.services.units import normalize_units
 from apple_health_dashboard.web.charts import area_chart, line_chart
+from apple_health_dashboard.web.heatmaps import calendar_heatmap
 from apple_health_dashboard.web.page_utils import (
+    sidebar_nav,
     load_all_records,
     page_header,
     sidebar_date_filter,
@@ -22,6 +24,9 @@ st.set_page_config(
 )
 
 page_header("🏃", "Activity", "Steps, distance, active energy, exercise time & more.")
+
+with st.sidebar:
+    sidebar_nav(current="Activity")
 
 db_path = default_db_path()
 
@@ -47,7 +52,7 @@ if df.empty:
     st.page_link("app.py", label="Go to Home →", icon="🏠")
     st.stop()
 
-date_filter = sidebar_date_filter(df, current="Activity")
+date_filter = sidebar_date_filter(df)
 if date_filter is None:
     st.warning("Could not determine date range.")
     st.stop()
@@ -88,10 +93,52 @@ if not daily.empty:
         c2.metric("Max", f"{daily['value'].max():,.1f} {selected_unit}")
         c3.metric("Min", f"{daily['value'].min():,.1f} {selected_unit}")
 
+    st.divider()
+    st.subheader("🗓️ Activity Consistency")
+    st.caption(f"Daily {selected_label} intensity over the last year.")
+    with st.spinner("Generating heatmap..."):
+        h_chart = calendar_heatmap(daily, "day", "value", color_scheme="greens")
+        if h_chart:
+            st.altair_chart(h_chart, use_container_width=True)
+        else:
+            st.info("Not enough data to generate consistency heatmap.")
+
     streak = daily_streak(daily.rename(columns={"value": "v"}), threshold=0)
     best_streak = longest_streak(daily.rename(columns={"value": "v"}), threshold=0)
     c4.metric("Current Streak", f"{streak} days", help="Consecutive days with data.")
     c5.metric("Best Streak", f"{best_streak} days", help="Longest ever consecutive streak.")
+
+# Step goal tracker (shown when Steps is selected)
+if "Step" in selected_label and not daily.empty:
+    with st.sidebar:
+        st.markdown("### 🎯 Step Goal")
+        step_goal = st.number_input("Daily step goal", min_value=1000, max_value=30000, value=10000, step=500, key="step_goal")
+    today_val = float(daily["value"].iloc[-1]) if not daily.empty else 0
+    pct = min(today_val / step_goal * 100, 100)
+    days_hit = (daily["value"] >= step_goal).sum()
+    pct_days = days_hit / len(daily) * 100
+    g1, g2, g3 = st.columns(3)
+    g1.metric("Latest day steps", f"{today_val:,.0f}", delta=f"{today_val - step_goal:+,.0f} vs goal")
+    g2.metric("Goal progress", f"{pct:.0f}%")
+    g3.metric(f"Days hitting {step_goal:,}", f"{days_hit} ({pct_days:.0f}%)")
+
+if selected_agg == "sum" and not daily.empty:
+    st.markdown("#### 🏃 Annual Pacing Projection")
+    daily_avg = daily["value"].mean()
+    annual_proj = daily_avg * 365
+    p1, p2 = st.columns(2)
+    p1.metric(f"Projected 365-Day {selected_label}", f"{annual_proj:,.0f} {selected_unit}")
+    
+    msg = f"Based on your current average of **{daily_avg:,.1f} {selected_unit}** per day, this is what a full year would look like."
+    if "Step" in selected_label:
+        if annual_proj >= 3650000:
+            msg += " 🌟 That's over 10,000 steps a day average!"
+        elif annual_proj >= 1000000:
+            msg += " 👏 Over a million steps!"
+    elif "Distance" in selected_label:
+        if annual_proj >= 1000:
+            msg += " 🌍 Over 1,000 km in a year!"
+    p2.info(msg)
 
 st.divider()
 
@@ -109,7 +156,7 @@ with col_chart:
                 title=f"{selected_label} per Day",
                 height=280,
             ),
-            use_container_width=True,
+            width="stretch",
         )
     else:
         st.info("No data for this metric in the selected period.")
@@ -141,8 +188,54 @@ if not daily.empty and len(daily) >= 7:
 
     st.altair_chart(
         line_chart(roll_df, x="day", y=y_cols, y_title=selected_unit, height=200),
-        use_container_width=True,
+        width="stretch",
     )
+
+st.divider()
+
+# ── Advanced Activity Heatmap ──────────────────────────────────────────────────
+st.subheader("🔥 Time-of-Day Heatmap")
+st.caption(f"When are you most active? Average {selected_label} by hour and day of the week.")
+
+if not metric_df.empty and "start_at" in metric_df.columns:
+    hm_df = metric_df.dropna(subset=["start_at"]).copy()
+    if not hm_df.empty:
+        hm_df["hour"] = hm_df["start_at"].dt.hour
+        hm_df["dow"] = hm_df["start_at"].dt.day_name()
+        hm_df["dow_num"] = hm_df["start_at"].dt.dayofweek
+        
+        # We need the number of unique weeks to calculate the true average per hour-day slot
+        num_weeks = max(1, (hm_df["start_at"].max() - hm_df["start_at"].min()).days / 7)
+        
+        if selected_agg == "sum":
+            hm_agg = hm_df.groupby(["dow", "dow_num", "hour"])["value"].sum().reset_index()
+            hm_agg["value"] = hm_agg["value"] / num_weeks
+        else:
+            hm_agg = hm_df.groupby(["dow", "dow_num", "hour"])["value"].mean().reset_index()
+            
+        days_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        
+        import altair as alt
+        heatmap = (
+            alt.Chart(hm_agg)
+            .mark_rect()
+            .encode(
+                x=alt.X("hour:O", title="Hour of Day (0-23)", axis=alt.Axis(labelAngle=0)),
+                y=alt.Y("dow:O", sort=days_order, title=""),
+                color=alt.Color("value:Q", scale=alt.Scale(scheme="oranges"), legend=alt.Legend(title=f"Avg {selected_unit}")),
+                tooltip=[
+                    alt.Tooltip("dow:O", title="Day"),
+                    alt.Tooltip("hour:O", title="Hour"),
+                    alt.Tooltip("value:Q", title=f"Avg {selected_label}", format=".1f"),
+                ]
+            )
+            .properties(height=300)
+        )
+        st.altair_chart(heatmap, width="stretch")
+    else:
+        st.info("Not enough data with timestamps to generate a heatmap.")
+else:
+    st.info("Not enough data with timestamps to generate a heatmap.")
 
 st.divider()
 
@@ -171,7 +264,7 @@ for rt, label, unit, agg in available_metrics:
 
 if summary_rows:
     summary_df = pd.DataFrame(summary_rows)
-    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+    st.dataframe(summary_df, width="stretch", hide_index=True)
 
 # ── Monthly breakdown ────────────────────────────────────────────────────────
 if not daily.empty and len(daily) >= 30:
@@ -197,6 +290,6 @@ if not daily.empty and len(daily) >= 30:
             y_title=f"{selected_label} ({selected_unit})",
             height=220,
         ),
-        use_container_width=True,
+        width="stretch",
     )
-    st.dataframe(monthly_agg, use_container_width=True, hide_index=True)
+    st.dataframe(monthly_agg, width="stretch", hide_index=True)

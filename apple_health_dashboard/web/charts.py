@@ -65,7 +65,7 @@ def area_chart(
         ),
     )
 
-    return (area).properties(title=title, height=height).interactive()
+    return (area).properties(title=title, height=height)
 
 
 def line_chart(
@@ -77,6 +77,7 @@ def line_chart(
     y_title: str = "",
     height: int = 220,
     rolling_avg_days: int | None = None,
+    show_trendline: bool = False,
 ) -> alt.Chart:
     """A line chart. Supports multiple y columns (via fold) or optional rolling average."""
     if isinstance(y, list):
@@ -96,7 +97,6 @@ def line_chart(
                 ],
             )
             .properties(title=title, height=height)
-            .interactive()
         )
         return chart
 
@@ -133,7 +133,18 @@ def line_chart(
         )
         layers.append(roll_line)
 
-    return alt.layer(*layers).properties(title=title, height=height).interactive()
+    if show_trendline:
+        # We need a numeric x for regression, but we use :T for datetime.
+        # Altair handles datetime regression in newer versions, but we'll try it simply.
+        trend = (
+            alt.Chart(df)
+            .transform_regression(x, y)
+            .mark_line(color=ACCENT, strokeWidth=1.5, strokeDash=[2, 2])
+            .encode(x=alt.X(f"{x}:T"), y=alt.Y(f"{y}:Q"))
+        )
+        layers.append(trend)
+
+    return alt.layer(*layers).properties(title=title, height=height)
 
 
 def bar_chart(
@@ -158,7 +169,6 @@ def bar_chart(
                 tooltip=[alt.Tooltip(f"{x}:N"), alt.Tooltip(f"{y}:Q", format=".1f")],
             )
             .properties(title=title, height=max(height, len(df) * 24))
-            .interactive()
         )
     else:
         chart = (
@@ -173,7 +183,6 @@ def bar_chart(
                 ],
             )
             .properties(title=title, height=height)
-            .interactive()
         )
     return chart
 
@@ -206,7 +215,6 @@ def stacked_bar_chart(
             ],
         )
         .properties(title=title, height=height)
-        .interactive()
     )
     return chart
 
@@ -243,6 +251,7 @@ def scatter_chart(
     y_title: str = "",
     color_col: str | None = None,
     height: int = 300,
+    show_trendline: bool = False,
 ) -> alt.Chart:
     """A scatter plot with optional color encoding."""
     enc: dict = {
@@ -261,10 +270,19 @@ def scatter_chart(
         alt.Chart(df)
         .mark_circle(size=60, opacity=0.7)
         .encode(**enc)
-        .properties(title=title, height=height)
-        .interactive()
     )
-    return chart
+    layers = [chart]
+
+    if show_trendline:
+        trend = (
+            alt.Chart(df)
+            .transform_regression(x, y)
+            .mark_line(color=ACCENT, strokeWidth=1.5, strokeDash=[2, 2])
+            .encode(x=alt.X(f"{x}:Q"), y=alt.Y(f"{y}:Q"))
+        )
+        layers.append(trend)
+
+    return alt.layer(*layers).properties(title=title, height=height)
 
 
 def heatmap_chart(

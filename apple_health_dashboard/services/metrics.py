@@ -429,6 +429,85 @@ METRICS: list[MetricSpec] = [
         aggregation="sum",
         description="Nike Fuel points.",
     ),
+    # ── Mobility ─────────────────────────────────────────────────────────────
+    MetricSpec(
+        record_type="HKQuantityTypeIdentifierWalkingDoubleSupportPercentage",
+        label="Double Support %",
+        category="Mobility",
+        aggregation="mean",
+        unit_hint="%",
+        description="Percentage of time both feet are on the ground while walking.",
+    ),
+    MetricSpec(
+        record_type="HKQuantityTypeIdentifierWalkingAsymmetryPercentage",
+        label="Walking Asymmetry %",
+        category="Mobility",
+        aggregation="mean",
+        unit_hint="%",
+        description="Percentage of time step cadence is asymmetrical.",
+    ),
+    MetricSpec(
+        record_type="HKQuantityTypeIdentifierWalkingSteadiness",
+        label="Walking Steadiness",
+        category="Mobility",
+        aggregation="last",
+        unit_hint="%",
+        description="A score of walking stability and fall risk.",
+    ),
+    MetricSpec(
+        record_type="HKQuantityTypeIdentifierStairAscentSpeed",
+        label="Stair Ascent Speed",
+        category="Mobility",
+        aggregation="mean",
+        unit_hint="m/s",
+        description="Speed of climbing stairs.",
+    ),
+    MetricSpec(
+        record_type="HKQuantityTypeIdentifierStairDescentSpeed",
+        label="Stair Descent Speed",
+        category="Mobility",
+        aggregation="mean",
+        unit_hint="m/s",
+        description="Speed of descending stairs.",
+    ),
+    # ── Symptoms ─────────────────────────────────────────────────────────────
+    MetricSpec(
+        record_type="HKCategoryTypeIdentifierHeadache",
+        label="Headache",
+        category="Symptoms",
+        aggregation="sum",
+        description="Presence and severity of headache.",
+    ),
+    MetricSpec(
+        record_type="HKCategoryTypeIdentifierSoreThroat",
+        label="Sore Throat",
+        category="Symptoms",
+        aggregation="sum",
+        description="Presence of sore throat.",
+    ),
+    MetricSpec(
+        record_type="HKCategoryTypeIdentifierCoughing",
+        label="Coughing",
+        category="Symptoms",
+        aggregation="sum",
+        description="Frequency or severity of coughing.",
+    ),
+    MetricSpec(
+        record_type="HKCategoryTypeIdentifierFever",
+        label="Fever",
+        category="Symptoms",
+        aggregation="sum",
+        description="Presence of fever.",
+    ),
+    # ── Environmental ────────────────────────────────────────────────────────
+    MetricSpec(
+        record_type="HKQuantityTypeIdentifierEnvironmentalAudioExposure",
+        label="Environmental Noise",
+        category="Environment",
+        aggregation="mean",
+        unit_hint="dB",
+        description="Exposure to environmental sound levels.",
+    ),
 ]
 
 # Build a fast lookup dict
@@ -443,6 +522,9 @@ CATEGORY_EMOJI: dict[str, str] = {
     "Mind": "🧘",
     "Nutrition": "🥗",
     "Respiratory": "🫁",
+    "Mobility": "🚶",
+    "Symptoms": "🤒",
+    "Environment": "🌍",
     "Other": "🔬",
 }
 

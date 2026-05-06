@@ -10,7 +10,7 @@ from apple_health_dashboard.ingest.apple_health_records import (
     iter_records_from_export_xml,
 )
 from apple_health_dashboard.ingest.apple_health_workouts import iter_workouts_from_export_xml
-from apple_health_dashboard.storage.sqlite_store import (
+from apple_health_dashboard.storage.duckdb_store import (
     init_db,
     open_db,
     upsert_activity_summaries,
@@ -20,9 +20,9 @@ from apple_health_dashboard.storage.sqlite_store import (
 )
 
 # Backwards-compatible helper: imports only records (no metadata, no workouts).
-# Kept for earlier callers, but the app uses import_export_xml_to_sqlite_all.
+# Kept for earlier callers, but the app uses import_export_xml_to_duckdb_all.
 
-def import_export_xml_to_sqlite(
+def import_export_xml_to_duckdb(
     export_xml_path: Path,
     db_path: Path,
     *,
@@ -38,7 +38,7 @@ def import_export_xml_to_sqlite(
 
         batch: list = []
         for rec, _meta in iter_records_from_export_xml(export_xml_path):
-            # Convert to legacy HealthRecord shape by reusing existing SQLite writer.
+            # Convert to legacy HealthRecord shape by reusing existing DuckDB writer.
             # (We keep the storage layer stable by continuing to write HealthRecord rows.)
             from apple_health_dashboard.ingest.apple_health import HealthRecord
 
@@ -74,7 +74,7 @@ def import_export_xml_to_sqlite(
         con.close()
 
 
-def import_export_xml_to_sqlite_all(
+def import_export_xml_to_duckdb_all(
     export_xml_path: Path,
     db_path: Path,
     *,
@@ -82,7 +82,7 @@ def import_export_xml_to_sqlite_all(
     workout_batch_size: int = 300,
     on_progress: Callable[[str, int], None] | None = None,
 ) -> dict[str, int]:
-    """Import Records (+metadata) + Workouts (+metadata) + ActivitySummary into SQLite."""
+    """Import Records (+metadata) + Workouts (+metadata) + ActivitySummary into DuckDB."""
 
     con = open_db(db_path)
     try:

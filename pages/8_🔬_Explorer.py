@@ -17,7 +17,7 @@ from apple_health_dashboard.services.metrics import (
 )
 from apple_health_dashboard.services.stats import summarize_by_day_agg
 from apple_health_dashboard.services.units import normalize_units
-from apple_health_dashboard.storage.sqlite_store import (
+from apple_health_dashboard.storage.duckdb_store import (
     count_records,
     init_db,
     list_record_types,
@@ -245,13 +245,13 @@ if filtered_count > 0:
                     if agg == "sum":
                         st.altair_chart(
                             area_chart(daily, x="day", y="value", y_title=y_title, height=260),
-                            use_container_width=True,
+                            width="stretch",
                         )
                     else:
                         st.altair_chart(
                             line_chart(daily, x="day", y="value", y_title=y_title,
                                        height=260, rolling_avg_days=7),
-                            use_container_width=True,
+                            width="stretch",
                         )
             elif is_categorical:
                 st.markdown("**Value Distribution**")
@@ -262,7 +262,7 @@ if filtered_count > 0:
                 val_counts.columns = ["value", "count"]
                 st.altair_chart(
                     bar_chart(val_counts, x="value", y="count", horizontal=True, height=300),
-                    use_container_width=True,
+                    width="stretch",
                 )
             else:
                 st.info("No numeric or categorical values to chart for this record type.")
@@ -286,6 +286,11 @@ if filtered_count > 0:
                     st.write(f"- {val}: **{cnt:,}**")
 
     st.divider()
+
+    # CSV export
+    if not chart_df.empty:
+        csv_export = chart_df.to_csv(index=False)
+        st.download_button('⬇️ Download sample as CSV', data=csv_export, file_name='explorer_export.csv', mime='text/csv')
 
     # ── Paginated raw data table ──────────────────────────────────────────────
     st.subheader("Raw Records")
@@ -322,7 +327,7 @@ if filtered_count > 0:
         display_df = page_df.drop(columns=["record_hash"], errors="ignore")
         st.dataframe(
             display_df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "type": st.column_config.TextColumn("Type"),
@@ -372,7 +377,7 @@ with st.expander("📊 Full Database Overview"):
 
     st.dataframe(
         overview_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "count": st.column_config.NumberColumn("Records", format="%d"),

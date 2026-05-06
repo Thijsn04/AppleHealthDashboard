@@ -17,10 +17,13 @@ from apple_health_dashboard.services.body import (
 )
 from apple_health_dashboard.services.filters import apply_date_filter
 from apple_health_dashboard.web.charts import area_chart, line_chart, scatter_chart
+from apple_health_dashboard.services.forecasting import forecast_metric, predict_goal_date
+from apple_health_dashboard.web.body_map import render_body_map
 from apple_health_dashboard.web.page_utils import (
     load_all_records,
     page_header,
     sidebar_date_filter,
+    sidebar_nav,
 )
 
 st.set_page_config(
@@ -30,6 +33,9 @@ st.set_page_config(
 )
 
 page_header("⚖️", "Body", "Weight, BMI, body fat percentage, lean mass and composition trends.")
+
+with st.sidebar:
+    sidebar_nav(current="Body")
 
 db_path = default_db_path()
 
@@ -100,19 +106,33 @@ with tabs[0]:
     else:
         col_chart, col_stats = st.columns([3, 1])
         with col_chart:
+            import altair as alt
+            height_m = st.sidebar.number_input("Your height (cm)", min_value=100, max_value=250, value=175, step=1, key="body_height_cm") / 100.0
+            ideal_low = 18.5 * height_m ** 2
+            ideal_high = 24.9 * height_m ** 2
+            band_df = w_trend.copy()
+            band_df["ideal_low"] = ideal_low
+            band_df["ideal_high"] = ideal_high
+            roll_df = w_trend.copy()
+            roll_df["roll7"] = roll_df["weight_kg"].rolling(7, min_periods=1).mean()
+            weight_line = alt.Chart(w_trend).mark_line(strokeWidth=2, color="#2E7D6E").encode(
+                x=alt.X("day:T", axis=alt.Axis(labelAngle=-30, title="")),
+                y=alt.Y("weight_kg:Q", scale=alt.Scale(zero=False), axis=alt.Axis(title="kg")),
+                tooltip=[alt.Tooltip("day:T", title="Date"), alt.Tooltip("weight_kg:Q", title="Weight (kg)", format=".1f")],
+            )
+            ideal_band = alt.Chart(band_df).mark_area(opacity=0.15, color="#10B981").encode(
+                x=alt.X("day:T"), y=alt.Y("ideal_high:Q"), y2=alt.Y2("ideal_low:Q"),
+            )
+            roll_line = alt.Chart(roll_df).mark_line(color="#FF6B6B", strokeWidth=1.5, strokeDash=[4, 3]).encode(
+                x=alt.X("day:T"), y=alt.Y("roll7:Q"),
+            )
             st.altair_chart(
-                line_chart(
-                    w_trend,
-                    x="day",
-                    y="weight_kg",
-                    y_title="kg",
-                    title="Daily Weight",
-                    height=280,
-                    rolling_avg_days=7,
-                ),
+                (ideal_band + weight_line + roll_line).properties(
+                    title=f"Weight with Ideal Range ({ideal_low:.1f}-{ideal_high:.1f} kg for {height_m*100:.0f}cm)", height=280
+                ).interactive(),
                 use_container_width=True,
             )
-            st.caption("Dashed line = 7-day rolling average.")
+            st.caption("Green band = BMI 18.5-24.9 normal range. Red dashed = 7-day rolling avg.")
 
         with col_stats:
             st.metric("Current", f"{w_trend['weight_kg'].iloc[-1]:.1f} kg")
@@ -135,6 +155,22 @@ with tabs[0]:
                 bar_chart(monthly_avg, x="month", y="weight_kg", y_title="kg", height=200),
                 use_container_width=True,
             )
+
+        # Weight Forecast
+        st.divider()
+        st.subheader("🔮 30-Day Forecast")
+        with st.spinner("Calculating forecast..."):
+            forecast_df = forecast_metric(w_trend, "day", "weight_kg")
+            if not forecast_df.empty:
+                f_chart = alt.Chart(forecast_df).mark_line(strokeWidth=2).encode(
+                    x=alt.X("day:T", title=""),
+                    y=alt.Y("value:Q", scale=alt.Scale(zero=False), title="kg"),
+                    color=alt.Color("is_forecast:N", scale=alt.Scale(range=["#2E7D6E", "#F59E0B"]), legend=None),
+                    strokeDash=alt.condition(alt.datum.is_forecast, alt.value([5, 5]), alt.value([0])),
+                    tooltip=["day:T", "value:Q"]
+                ).properties(height=250)
+                st.altair_chart(f_chart.interactive(), use_container_width=True)
+                st.caption("Orange dashed line = AI-generated forecast (Holt-Winters)")
 
 # ── BMI tab ───────────────────────────────────────────────────────────────────
 with tabs[1]:
@@ -299,60 +335,23 @@ with tabs[2]:
 with tabs[3]:
     st.subheader("Body Metrics Analysis")
 
-    # Weekly averages
-    if not w_trend.empty and len(w_trend) >= 7:
-        st.markdown("**Weekly Average Weight**")
-        weekly = w_trend.copy()
-        weekly["week"] = pd.to_datetime(weekly["day"]).dt.to_period("W").dt.start_time
-        weekly_avg = weekly.groupby("week")["weight_kg"].mean().reset_index()
-        from apple_health_dashboard.web.charts import bar_chart
-        st.altair_chart(
-            bar_chart(weekly_avg, x="week", y="weight_kg", y_title="kg", height=200),
-            use_container_width=True,
-        )
+    # Interactive Body Map for muscle/pain tracking
+    st.markdown("#### 🧍 Interactive Body Map")
+    st.caption("Track muscle soreness or log symptom locations.")
+    render_body_map()
 
-    # Rate of change
-    if not w_trend.empty and len(w_trend) >= 2:
-        st.markdown("**Rate of Change**")
-        rate_df = w_trend.copy()
-        rate_df["day_dt"] = pd.to_datetime(rate_df["day"])
-        rate_df = rate_df.sort_values("day_dt")
-
-        # Compare weeks
-        if len(rate_df) >= 14:
-            n = len(rate_df)
-            half = n // 2
-            first_half_avg = rate_df["weight_kg"].iloc[:half].mean()
-            second_half_avg = rate_df["weight_kg"].iloc[half:].mean()
-            weekly_change = (second_half_avg - first_half_avg) / max(half / 7, 1)
-
-            if abs(weekly_change) > 0.01:
-                direction = "gaining" if weekly_change > 0 else "losing"
-                st.info(
-                    f"📊 Trend: You're **{direction}** approximately "
-                    f"**{abs(weekly_change):.2f} kg per week** on average."
-                )
-
-        # Goal calculator
-        st.markdown("**Goal Calculator**")
-        target_weight = st.number_input(
-            "Target weight (kg)",
-            min_value=30.0,
-            max_value=300.0,
-            value=float(latest_weight) if latest_weight else _DEFAULT_TARGET_WEIGHT_KG,
-            step=0.5,
-        )
-        current_w = latest_weight or float(w_trend["weight_kg"].mean())
-        diff = target_weight - current_w
-
-        if abs(diff) > 0.1:
-            # Weekly rates
-            for weekly_rate in [0.25, 0.5, 0.75]:
-                weeks = abs(diff) / weekly_rate
-                direction = "lose" if diff < 0 else "gain"
-                st.write(
-                    f"To **{direction} {abs(diff):.1f} kg** at {weekly_rate} kg/week: "
-                    f"approximately **{weeks:.0f} weeks** ({weeks / 4.3:.1f} months)."
-                )
-        else:
-            st.success("You're at your target weight! 🎉")
+    # Goal Prediction
+    st.divider()
+    st.subheader("🏁 Goal Prediction")
+    target_w = st.number_input(
+        "Target weight (kg)",
+        min_value=30.0,
+        max_value=200.0,
+        value=float(w_trend["weight_kg"].iloc[-1]),
+        key="goal_target_input"
+    )
+    predicted_date = predict_goal_date(w_trend, "day", "weight_kg", target_w)
+    if predicted_date:
+        st.success(f"At your current trend, you will reach **{target_w} kg** around **{predicted_date.date().strftime('%B %d, %Y')}**.")
+    else:
+        st.info("Current trend is not moving towards your target, or not enough data to predict.")

@@ -12,7 +12,11 @@ from apple_health_dashboard.services.insights import generate_insights
 from apple_health_dashboard.services.stats import summarize_by_day_agg
 from apple_health_dashboard.services.streaks import daily_streak, personal_bests
 from apple_health_dashboard.web.charts import area_chart, line_chart
+from apple_health_dashboard.services.readiness import calculate_readiness_score
+from apple_health_dashboard.services.stats import detect_outliers_zscore
+from apple_health_dashboard.storage.notes_store import load_notes, save_note
 from apple_health_dashboard.web.page_utils import (
+    sidebar_nav,
     load_all_activity_summaries,
     load_all_records,
     load_all_workouts,
@@ -26,7 +30,9 @@ st.set_page_config(
     layout="wide",
 )
 
-page_header("📊", "Overview", "Your key health metrics at a glance.")
+with st.sidebar:
+    sidebar_nav(current="Overview")
+    st.divider()
 
 db_path = default_db_path()
 
@@ -41,8 +47,41 @@ if df.empty:
     st.page_link("app.py", label="Go to Home →", icon="🏠")
     st.stop()
 
+# ── Readiness Score ───────────────────────────────────────────────────────────
+readiness = calculate_readiness_score(df, pd.DataFrame(), adf) # Simplified sleep for now
+score = readiness["score"]
+
+st.markdown(
+    f"""<div class="ahd-hero">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div class="ahd-hero-title">Welcome back!</div>
+                <div class="ahd-hero-sub">Your readiness is <b>{readiness['label']}</b> today. Based on your HRV, sleep, and activity.</div>
+            </div>
+            <div style="text-align: center; background: rgba(255,255,255,0.15); padding: 15px 25px; border-radius: 15px; backdrop-filter: blur(10px);">
+                <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.8;">Readiness</div>
+                <div style="font-size: 2.5rem; font-weight: 800;">{score}%</div>
+            </div>
+        </div>
+    </div>""",
+    unsafe_allow_html=True
+)
+
+# ── Anomaly Detection ──────────────────────────────────────────────────────────
+hr_type = "HKQuantityTypeIdentifierHeartRate"
+hr_data = df[df["type"] == hr_type].tail(1000) # Recent HR
+if not hr_data.empty:
+    hr_anomalies = detect_outliers_zscore(hr_data, "value", threshold=3.5)
+    recent_anomalies = hr_anomalies[hr_anomalies["is_outlier"]].tail(3)
+    if not recent_anomalies.empty:
+        with st.expander("⚠️ Unusual Heart Rate Detected", expanded=False):
+            st.warning("We detected some heart rate readings that are statistically unusual for you.")
+            for _, row in recent_anomalies.iterrows():
+                st.write(f"- **{row['value']:.0f} bpm** at {pd.to_datetime(row['start_at']).strftime('%H:%M on %b %d')}")
+            st.info("Occasional spikes are normal during intense exercise or stress, but if you feel unwell, please consult a professional.")
+
 # ── Date filter ───────────────────────────────────────────────────────────────
-date_filter = sidebar_date_filter(df, current="Overview")
+date_filter = sidebar_date_filter(df)
 if date_filter is None:
     st.warning("Could not determine date range from the data.")
     st.stop()
@@ -149,6 +188,39 @@ c4.metric(
 
 st.divider()
 
+# ── On This Day ───────────────────────────────────────────────────────────────
+st.markdown("### 🕰️ On This Day")
+if not df.empty and pd.notna(df["start_at"].max()):
+    ref_date = pd.Timestamp.now().date()
+    try:
+        one_year_ago = ref_date.replace(year=ref_date.year - 1)
+        
+        # Steps
+        df_1y_steps = df[(df["type"] == STEP_TYPE) & (df["start_at"].dt.date == one_year_ago)]
+        steps_1y = int(df_1y_steps["value"].sum()) if not df_1y_steps.empty else 0
+        
+        # Workouts
+        wdf_1y = wdf[wdf["start_at"].dt.date == one_year_ago] if not wdf.empty and "start_at" in wdf.columns else pd.DataFrame()
+        
+        if steps_1y > 0 or not wdf_1y.empty:
+            st.caption(f"**Exactly 1 year ago today ({one_year_ago.strftime('%b %d, %Y')}):**")
+            c1_1y, c2_1y, c3_1y = st.columns(3)
+            c1_1y.metric("Steps", f"{steps_1y:,}" if steps_1y > 0 else "—")
+            
+            w_names = ", ".join(wdf_1y["activity_label"].tolist()) if not wdf_1y.empty and "activity_label" in wdf_1y.columns else "None"
+            c2_1y.metric("Workouts", w_names if w_names else "—")
+            
+            # Move ring
+            adf_1y = adf[adf["day"].dt.date == one_year_ago] if not adf.empty and "day" in adf.columns else pd.DataFrame()
+            move_1y = int(adf_1y["active_energy_burned_kcal"].iloc[0]) if not adf_1y.empty and "active_energy_burned_kcal" in adf_1y.columns and pd.notna(adf_1y["active_energy_burned_kcal"].iloc[0]) else 0
+            c3_1y.metric("Move (kcal)", f"{move_1y:,}" if move_1y > 0 else "—")
+        else:
+            st.info(f"No significant data recorded on {one_year_ago.strftime('%b %d, %Y')}.")
+    except ValueError:
+        pass # Leap year 29 Feb case
+
+st.divider()
+
 # ── Auto-insights strip ───────────────────────────────────────────────────────
 st.markdown("### 💡 Key Insights")
 st.caption("Auto-detected patterns across your health data. [See full analysis →](Insights)")
@@ -183,115 +255,102 @@ for _col, _ins in zip(_cols, _top_insights):
 st.divider()
 
 # ── Charts ────────────────────────────────────────────────────────────────────
-col_l, col_r = st.columns(2)
+tab_daily, tab_body, tab_workouts = st.tabs(["🚶 Daily Activity & Sleep", "❤️ Heart & Body Trends", "🏋️ Workouts Summary"])
 
-with col_l:
-    st.markdown("#### Steps per Day")
-    if not daily_steps.empty:
-        st.altair_chart(
-            area_chart(
-                daily_steps,
-                x="day",
-                y="value",
-                y_title="Steps",
-                color="#2E7D6E",
-                height=200,
-            ),
-            use_container_width=True,
-        )
-        pb = personal_bests(daily_steps.rename(columns={"value": "steps"}))
-        if pb:
-            st.caption(
-                f"Best day: **{pb['max_value']:,.0f} steps** on {pd.Timestamp(pb['max_day']).date()} · "
-                f"Average: **{pb['avg_value']:,.0f}**"
-            )
-    else:
-        st.info("No step data in this period.")
-
-with col_r:
-    st.markdown("#### Resting Heart Rate")
-    rhr_df = resting_hr_trend(df_f)
-    if not rhr_df.empty:
-        st.altair_chart(
-            line_chart(
-                rhr_df,
-                x="day",
-                y="rhr",
-                y_title="bpm",
-                height=200,
-                rolling_avg_days=7,
-            ),
-            use_container_width=True,
-        )
-        st.caption("Dashed line = 7-day rolling average.")
-    else:
-        st.info("No heart rate data in this period.")
-
-col_l2, col_r2 = st.columns(2)
-
-with col_l2:
-    st.markdown("#### Sleep Duration")
-    if not srec.empty:
-        sleep_dur = sleep_duration_by_day(srec, stages="actual")
-        if sleep_dur.empty:
-            sleep_dur = sleep_duration_by_day(srec)
-        if not sleep_dur.empty:
+with tab_daily:
+    col_l, col_r = st.columns(2)
+    
+    with col_l:
+        st.markdown("#### Steps per Day")
+        if not daily_steps.empty:
             st.altair_chart(
-                area_chart(sleep_dur, x="day", y="hours", y_title="Hours", color="#4A90D9", height=200),
-                use_container_width=True,
+                area_chart(daily_steps, x="day", y="value", y_title="Steps", color="#2E7D6E", height=200),
+                width="stretch",
             )
-            st.caption(
-                f"Average: **{sleep_stats.get('avg_hours', 0):.1f}h** · "
-                f"Median: **{sleep_stats.get('median_hours', 0):.1f}h**"
-            )
-    else:
-        st.info("No sleep data in this period.")
+            pb = personal_bests(daily_steps.rename(columns={"value": "steps"}))
+            if pb:
+                st.caption(f"Best: **{pb['max_value']:,.0f} steps** on {pd.Timestamp(pb['max_day']).date()} · Avg: **{pb['avg_value']:,.0f}**")
+        else:
+            st.info("No step data.")
 
-with col_r2:
+    with col_r:
+        st.markdown("#### Sleep Duration")
+        if not srec.empty:
+            sleep_dur = sleep_duration_by_day(srec, stages="actual")
+            if sleep_dur.empty: sleep_dur = sleep_duration_by_day(srec)
+            if not sleep_dur.empty:
+                st.altair_chart(
+                    area_chart(sleep_dur, x="day", y="hours", y_title="Hours", color="#4A90D9", height=200),
+                    width="stretch",
+                )
+                st.caption(f"Avg: **{sleep_stats.get('avg_hours', 0):.1f}h** · Median: **{sleep_stats.get('median_hours', 0):.1f}h**")
+        else:
+            st.info("No sleep data.")
+
     st.markdown("#### Activity (Move Ring)")
     if not adf_f.empty and "active_energy_burned_kcal" in adf_f.columns:
-        ring_data = adf_f[["day", "active_energy_burned_kcal"]].dropna().copy()
-        ring_data = ring_data.rename(columns={"active_energy_burned_kcal": "kcal"})
-        st.altair_chart(
-            area_chart(ring_data, x="day", y="kcal", y_title="Active kcal", color="#FF6B6B", height=200),
-            use_container_width=True,
-        )
+        ring_data = adf_f[["day", "active_energy_burned_kcal"]].dropna().copy().rename(columns={"active_energy_burned_kcal": "kcal"})
+        st.altair_chart(area_chart(ring_data, x="day", y="kcal", y_title="Active kcal", color="#FF6B6B", height=200), width="stretch")
     else:
-        st.info("No activity ring data in this period.")
+        st.info("No activity ring data.")
 
-# ── Weight trend ──────────────────────────────────────────────────────────────
-w_trend = weight_trend(df_f)
-if not w_trend.empty and len(w_trend) > 1:
-    st.markdown("#### Weight Trend")
-    st.altair_chart(
-        line_chart(w_trend, x="day", y="weight_kg", y_title="kg", height=180, rolling_avg_days=7),
-        use_container_width=True,
-    )
-    change = body_stats.get("weight_change_kg")
-    if change is not None:
-        arrow = "▲" if change > 0 else "▼"
-        st.caption(
-            f"Change in period: {arrow} **{abs(change):.1f} kg** · "
-            f"Latest: **{body_stats.get('latest_weight_kg')} kg**"
-        )
+with tab_body:
+    col_bl, col_br = st.columns(2)
+    with col_bl:
+        st.markdown("#### Resting Heart Rate")
+        rhr_df = resting_hr_trend(df_f)
+        if not rhr_df.empty:
+            st.altair_chart(line_chart(rhr_df, x="day", y="rhr", y_title="bpm", height=200, rolling_avg_days=7), width="stretch")
+        else:
+            st.info("No RHR data.")
+            
+    with col_br:
+        w_trend = weight_trend(df_f)
+        if not w_trend.empty and len(w_trend) > 1:
+            st.markdown("#### Weight Trend")
+            st.altair_chart(line_chart(w_trend, x="day", y="weight_kg", y_title="kg", height=200, rolling_avg_days=7), width="stretch")
+        else:
+            st.info("No Weight data.")
 
-# ── Workouts summary ──────────────────────────────────────────────────────────
-if not wdf_f.empty:
+with tab_workouts:
+    if not wdf_f.empty:
+        label_col = "activity_label" if "activity_label" in wdf_f.columns else "workout_activity_type"
+        type_counts = wdf_f[label_col].value_counts().reset_index()
+        type_counts.columns = ["Type", "Count"]
+        c_bar, c_info = st.columns([2, 1])
+        with c_bar:
+            from apple_health_dashboard.web.charts import bar_chart as _bar
+            st.altair_chart(_bar(type_counts, x="Type", y="Count", horizontal=True, height=max(180, len(type_counts) * 28)), width="stretch")
+        with c_info:
+            st.metric("Total workouts", len(wdf_f))
+            total_h = wdf_f["duration_s"].fillna(0).sum() / 3600
+            st.metric("Total hours", f"{total_h:.1f}h")
+            total_kcal = wdf_f["total_energy_kcal"].fillna(0).sum()
+            st.metric("Total calories", f"{total_kcal:,.0f} kcal")
+    else:
+        st.info("No workout data.")
+
+# ── Annotations & Notes ───────────────────────────────────────────────────────
+with st.sidebar:
     st.divider()
-    st.markdown("#### Workout Activity")
-    label_col = "activity_label" if "activity_label" in wdf_f.columns else "workout_activity_type"
-    type_counts = wdf_f[label_col].value_counts().reset_index()
-    type_counts.columns = ["Type", "Count"]
-    c_bar, c_info = st.columns([2, 1])
-    with c_bar:
-        from apple_health_dashboard.web.charts import bar_chart as _bar
-        st.altair_chart(
-            _bar(type_counts, x="Type", y="Count", horizontal=True, height=max(180, len(type_counts) * 28)),
-            use_container_width=True,
-        )
-    with c_info:
-        st.metric("Total workouts", len(wdf_f))
-        total_h = wdf_f["duration_s"].fillna(0).sum() / 3600
-        st.metric("Total hours", f"{total_h:.1f}h")
-        total_kcal = wdf_f["total_energy_kcal"].fillna(0).sum()
-        st.metric("Total calories", f"{total_kcal:,.0f} kcal")
+    st.subheader("📝 Chart Annotations")
+    note_date = st.date_input("Annotation Date", value=datetime.now())
+    note_text = st.text_input("Note (e.g. 'Started diet')")
+    if st.button("Add Annotation"):
+        save_note(note_date, note_text, "Overview")
+        st.success("Note added!")
+        st.rerun()
+
+# Helper to add annotations to Altair chart
+def add_annotations(base_chart, notes):
+    if notes.empty: return base_chart
+    notes_df = notes.copy()
+    notes_df["y"] = 0
+    rules = alt.Chart(notes_df).mark_rule(color="red", strokeDash=[4,4]).encode(x="date:T")
+    text = alt.Chart(notes_df).mark_text(align="left", dx=5, dy=-10, color="red", fontWeight="bold").encode(
+        x="date:T", y=alt.value(20), text="note:N"
+    )
+    return base_chart + rules + text
+
+notes_df_all = load_notes()
+overview_notes = notes_df_all[notes_df_all["metric_context"] == "Overview"]

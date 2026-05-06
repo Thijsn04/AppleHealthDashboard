@@ -400,7 +400,7 @@ def workout_duration_hrv_pairs(df: pd.DataFrame, wdf: pd.DataFrame) -> pd.DataFr
         wdf2.groupby("hrv_day")
         .agg(
             workout_duration_min=("duration_min", "sum"),
-            workout_type=("activity_type", "first"),
+            workout_type=("workout_activity_type", "first"),
         )
         .reset_index()
         .rename(columns={"hrv_day": "day"})

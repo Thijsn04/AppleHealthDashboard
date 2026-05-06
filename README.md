@@ -21,7 +21,7 @@ and heart rate variability to VO₂ max, workout personal records and body compo
 
 - Your data is **never** uploaded anywhere.
 - Uploads are stored temporarily in `./.tmp/`.
-- Data is imported into a local SQLite database: `./health.db`.
+- Data is imported into a local DuckDB database: `./health.duckdb`.
 - Both are listed in `.gitignore`.
 
 ## Requirements
@@ -133,7 +133,7 @@ All locally stored data (database + temporary files) can be deleted from the Hom
 
 ```python
 from apple_health_dashboard.local_data import delete_local_data
-delete_local_data()  # removes ./health.db and ./.tmp/
+delete_local_data()  # removes ./health.duckdb and ./.tmp/
 ```
 
 ## Troubleshooting

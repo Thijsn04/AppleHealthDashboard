@@ -6,7 +6,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from apple_health_dashboard.storage.sqlite_store import (
+from apple_health_dashboard.storage.duckdb_store import (
     count_records,
     list_record_types,
     open_db,
@@ -21,7 +21,7 @@ class ExploreParams:
 
 
 def render_explore_records(db_path, params: ExploreParams) -> None:
-    """Explore/browse raw records from SQLite without loading everything into memory."""
+    """Explore/browse raw records from DuckDB without loading everything into memory."""
 
     con = open_db(db_path)
     try:

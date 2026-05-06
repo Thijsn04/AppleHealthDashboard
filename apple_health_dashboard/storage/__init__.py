@@ -1,1 +1,1 @@
-"""Local storage layer (SQLite) for fast reloads."""
+"""Local storage layer (DuckDB) for high-performance analytical queries."""

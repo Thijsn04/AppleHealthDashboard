@@ -85,7 +85,7 @@ def iter_health_records_from_export_xml(export_xml_path: Path) -> Iterator[Healt
 def load_export_xml_from_path(export_xml_path: Path) -> list[HealthRecord]:
     """Load all records into memory.
 
-    Good for a first version; later we can persist to SQLite for speed.
+    Good for a first version; later we can persist to DuckDB for speed.
     """
     return list(iter_health_records_from_export_xml(export_xml_path))
 

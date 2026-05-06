@@ -157,11 +157,11 @@ with tabs[0]:
                     .mark_rule(strokeDash=[5, 3], strokeWidth=1.5, color="#94A3B8")
                     .encode(y=alt.Y("g:Q"))
                 )
-                st.altair_chart((area + goal_line).properties(height=180).interactive(), use_container_width=True)
+                st.altair_chart((area + goal_line).properties(height=180).interactive(), width="stretch")
             else:
                 st.altair_chart(
                     area_chart(plot_df, x="day", y="value", y_title=label, color=color, height=180),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
 # ── Goal Completion tab ────────────────────────────────────────────────────────
@@ -196,7 +196,7 @@ with tabs[1]:
         })
 
     if comp_data:
-        st.dataframe(pd.DataFrame(comp_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(comp_data), width="stretch", hide_index=True)
 
     # Daily completion streak chart
     st.markdown("**All-Three-Rings Completion Over Time**")
@@ -229,29 +229,57 @@ with tabs[1]:
         .properties(title="All Rings Closed per Day (green = closed)", height=180)
         .interactive()
     )
-    st.altair_chart(closed_chart, use_container_width=True)
+    st.altair_chart(closed_chart, width="stretch")
 
-# ── Monthly tab ────────────────────────────────────────────────────────────────
+# ── Calendar tab ─────────────────────────────────────────────────────────────
 with tabs[2]:
-    st.subheader("Monthly Averages")
+    st.subheader("Ring Closure Calendar")
+    st.caption("A GitHub-style heatmap of days where you closed all three rings.")
 
-    adf_f["month"] = pd.to_datetime(adf_f["day"]).dt.to_period("M").dt.start_time
-    month_agg_cols = {}
-    for col in ["active_energy_burned_kcal", "apple_exercise_time_min", "apple_stand_hours"]:
-        if col in adf_f.columns:
-            month_agg_cols[col] = "mean"
+    cal_df = adf_f.copy()
+    def _all_closed(row: pd.Series) -> int:
+        checks = []
+        for actual_col, goal_col, _ in ring_defs:
+            if actual_col in row and goal_col in row:
+                goal = row.get(goal_col, 0) or 0
+                actual = row.get(actual_col, 0) or 0
+                checks.append(goal > 0 and actual >= goal)
+        return 1 if checks and all(checks) else 0
 
-    if month_agg_cols:
-        monthly = adf_f.groupby("month").agg(month_agg_cols).reset_index()
-        monthly.columns = ["Month"] + [
-            c.replace("active_energy_burned_kcal", "Avg Move (kcal)")
-            .replace("apple_exercise_time_min", "Avg Exercise (min)")
-            .replace("apple_stand_hours", "Avg Stand (h)")
-            for c in list(month_agg_cols.keys())
-        ]
-        for c in monthly.columns[1:]:
-            monthly[c] = monthly[c].round(1)
-        st.dataframe(monthly, use_container_width=True, hide_index=True)
+    cal_df["all_closed"] = cal_df.apply(_all_closed, axis=1)
+    
+    if not cal_df.empty:
+        cal_df["day_dt"] = pd.to_datetime(cal_df["day"])
+        cal_df["week_of_year"] = cal_df["day_dt"].dt.isocalendar().week.astype(str)
+        cal_df["weekday"] = cal_df["day_dt"].dt.day_name()
+        WEEKDAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        cal_df["weekday"] = pd.Categorical(cal_df["weekday"], categories=WEEKDAY_ORDER, ordered=True)
+
+        import altair as alt
+        heat = (
+            alt.Chart(cal_df)
+            .mark_rect(cornerRadius=2)
+            .encode(
+                x=alt.X("week_of_year:O", axis=alt.Axis(title="Week")),
+                y=alt.Y("weekday:O", sort=WEEKDAY_ORDER, axis=alt.Axis(title="")),
+                color=alt.condition(
+                    alt.datum.all_closed == 1,
+                    alt.value("#10B981"),
+                    alt.value("rgba(46,125,110,0.06)"),
+                ),
+                tooltip=[
+                    alt.Tooltip("day_dt:T", title="Date"),
+                    alt.Tooltip("all_closed:N", title="All Closed?"),
+                ],
+            )
+            .properties(
+                title="All Rings Closed (Green = Yes)",
+                height=220,
+            )
+        )
+        st.altair_chart(heat, width="stretch")
+    else:
+        st.info("No ring data available for a calendar view.")
 
         # Bar charts for each ring
         ring_monthly = [
@@ -263,12 +291,12 @@ with tabs[2]:
             if col in monthly.columns:
                 st.altair_chart(
                     bar_chart(monthly, x="Month", y=col, y_title=col, color=color, height=180),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
 # ── Raw Data tab ───────────────────────────────────────────────────────────────
 with tabs[3]:
     st.subheader("Raw Activity Summary Data")
     raw = adf_f.drop(columns=["month"], errors="ignore")
-    st.dataframe(raw.sort_values("day", ascending=False), use_container_width=True, hide_index=True)
+    st.dataframe(raw.sort_values("day", ascending=False), width="stretch", hide_index=True)
     st.caption(f"Total rows: {len(raw):,}")

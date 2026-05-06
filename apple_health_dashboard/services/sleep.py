@@ -157,3 +157,48 @@ def sleep_consistency_stats(df: pd.DataFrame) -> dict[str, float]:
         "nights_gte_8h": float((hours >= 8).sum() / total),
         "total_nights": total,
     }
+
+def sleep_timing_consistency(df: pd.DataFrame) -> dict[str, float]:
+    """Calculate the consistency of bedtimes and wake times.
+    
+    Returns:
+      avg_bedtime: average bedtime in hours (e.g. 23.5 for 11:30 PM)
+      avg_waketime: average wake time in hours (e.g. 7.5 for 7:30 AM)
+      bedtime_variance_h: standard deviation of bedtimes
+      waketime_variance_h: standard deviation of wake times
+      consistency_score: 0-100 score based on variance
+    """
+    valid = df[df["start_at"].notna() & df["end_at"].notna()].copy()
+    if valid.empty:
+        return {}
+        
+    mask = valid["value_str"].isin(SLEEP_STAGES_ACTUAL)
+    valid = valid[mask]
+    if valid.empty:
+        return {}
+        
+    valid["day"] = valid["end_at"].dt.floor("D")
+    daily = valid.groupby("day").agg(
+        bedtime=("start_at", "min"),
+        waketime=("end_at", "max")
+    ).reset_index()
+    
+    # Convert to fractional hours. Bedtimes after midnight get +24 for easier math.
+    daily["bedtime_hour"] = daily["bedtime"].dt.hour + daily["bedtime"].dt.minute / 60.0
+    daily["bedtime_hour"] = daily["bedtime_hour"].apply(lambda x: x + 24 if x < 12 else x)
+    daily["waketime_hour"] = daily["waketime"].dt.hour + daily["waketime"].dt.minute / 60.0
+    
+    bed_std = float(daily["bedtime_hour"].std())
+    wake_std = float(daily["waketime_hour"].std())
+    
+    # Simple 0-100 score: 0 std = 100, 2h std = 50, 4h+ std = 0
+    avg_std = (bed_std + wake_std) / 2
+    score = max(0, 100 - (avg_std * 25)) if pd.notna(avg_std) else 0.0
+    
+    return {
+        "bedtime_variance_h": bed_std,
+        "waketime_variance_h": wake_std,
+        "consistency_score": float(score),
+        "avg_bedtime": float(daily["bedtime_hour"].mean()),
+        "avg_waketime": float(daily["waketime_hour"].mean())
+    }
