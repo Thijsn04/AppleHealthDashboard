@@ -12,8 +12,13 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from apple_health_dashboard.services.heart import (
+    DIASTOLIC_TYPE,
+    SYSTOLIC_TYPE,
+    WALKING_HR_TYPE,
+    hr_zone_distribution,
     hrv_trend,
     resting_hr_trend,
+    spo2_trend,
     vo2max_trend,
 )
 from apple_health_dashboard.services.sleep import (
@@ -435,6 +440,144 @@ def workout_duration_trend(wdf: pd.DataFrame, window: int = 7) -> pd.DataFrame:
     wdf2 = wdf2.sort_values("day").reset_index(drop=True)
     wdf2["duration_rolling"] = wdf2["duration_min"].rolling(window, min_periods=1).mean()
     return wdf2[["day", "duration_min", "duration_rolling"]]
+
+
+def sleep_debt_daily(
+    df: pd.DataFrame,
+    *,
+    goal_h: float = 8.0,
+) -> pd.DataFrame:
+    """Return cumulative sleep debt relative to a nightly goal.
+
+    Returns columns: day, sleep_h, debt_h, cumulative_debt_h
+    A positive debt means you slept less than the goal; negative means surplus.
+    """
+    srec = sleep_records(df)
+    sleep_df = sleep_duration_by_day(srec, stages="actual")
+    if sleep_df.empty:
+        sleep_df = sleep_duration_by_day(srec, stages="all")
+
+    if sleep_df.empty:
+        return pd.DataFrame(columns=["day", "sleep_h", "debt_h", "cumulative_debt_h"])
+
+    out = sleep_df.rename(columns={"hours": "sleep_h"}).copy()
+    out["day"] = pd.to_datetime(out["day"])
+    out["debt_h"] = goal_h - out["sleep_h"]
+    out["cumulative_debt_h"] = out["debt_h"].cumsum()
+    return out.sort_values("day").reset_index(drop=True)
+
+
+def best_workout_type_for_hrv(
+    df: pd.DataFrame,
+    wdf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Return average next-morning HRV grouped by workout type.
+
+    Returns columns: workout_type, avg_hrv, count
+    Sorted by avg_hrv descending.
+    """
+    pairs = workout_duration_hrv_pairs(df, wdf)
+    if pairs.empty or "workout_type" not in pairs.columns:
+        return pd.DataFrame(columns=["workout_type", "avg_hrv", "count"])
+
+    out = (
+        pairs.groupby("workout_type")["hrv"]
+        .agg(avg_hrv="mean", count="count")
+        .reset_index()
+        .sort_values("avg_hrv", ascending=False)
+    )
+    out["avg_hrv"] = out["avg_hrv"].round(1)
+    return out
+
+
+def weight_bmi_daily(df: pd.DataFrame) -> pd.DataFrame:
+    """Return daily weight (kg) and BMI, merged on day.
+
+    Returns columns: day, weight_kg, bmi (both are optional — only present rows are returned).
+    """
+    from apple_health_dashboard.services.body import bmi_trend, weight_trend
+
+    w = weight_trend(df)
+    b = bmi_trend(df)
+
+    if w.empty and b.empty:
+        return pd.DataFrame(columns=["day", "weight_kg", "bmi"])
+
+    w["day"] = pd.to_datetime(w["day"])
+    b["day"] = pd.to_datetime(b["day"])
+
+    if w.empty:
+        return b.rename(columns={"value": "bmi"})
+    if b.empty:
+        return w
+
+    merged = w.merge(b, on="day", how="outer").sort_values("day").reset_index(drop=True)
+    return merged
+
+
+def spo2_daily(df: pd.DataFrame) -> pd.DataFrame:
+    """Return daily SpO₂ (blood oxygen %).
+
+    Returns columns: day, spo2
+    """
+    return spo2_trend(df)
+
+
+def blood_pressure_daily(df: pd.DataFrame) -> pd.DataFrame:
+    """Return daily systolic and diastolic blood pressure.
+
+    Returns columns: day, systolic, diastolic
+    """
+    if df.empty or "type" not in df.columns:
+        return pd.DataFrame(columns=["day", "systolic", "diastolic"])
+
+    def _daily_mean(record_type: str, col: str) -> pd.DataFrame:
+        sub = df[df["type"] == record_type].copy()
+        if sub.empty or "value" not in sub.columns:
+            return pd.DataFrame(columns=["day", col])
+        sub = sub[sub["value"].notna() & sub["start_at"].notna()].copy()
+        if sub.empty:
+            return pd.DataFrame(columns=["day", col])
+        sub["day"] = sub["start_at"].dt.floor("D")
+        return sub.groupby("day")["value"].mean().reset_index().rename(columns={"value": col})
+
+    sys_df = _daily_mean(SYSTOLIC_TYPE, "systolic")
+    dia_df = _daily_mean(DIASTOLIC_TYPE, "diastolic")
+
+    if sys_df.empty and dia_df.empty:
+        return pd.DataFrame(columns=["day", "systolic", "diastolic"])
+
+    sys_df["day"] = pd.to_datetime(sys_df["day"])
+    dia_df["day"] = pd.to_datetime(dia_df["day"])
+
+    if sys_df.empty:
+        return dia_df
+    if dia_df.empty:
+        return sys_df
+
+    merged = sys_df.merge(dia_df, on="day", how="outer").sort_values("day").reset_index(drop=True)
+    return merged
+
+
+def walking_hr_daily(df: pd.DataFrame) -> pd.DataFrame:
+    """Return daily walking heart rate average.
+
+    Returns columns: day, walking_hr
+    """
+    if df.empty or "type" not in df.columns:
+        return pd.DataFrame(columns=["day", "walking_hr"])
+
+    sub = df[df["type"] == WALKING_HR_TYPE].copy()
+    if sub.empty or "value" not in sub.columns:
+        return pd.DataFrame(columns=["day", "walking_hr"])
+
+    sub = sub[sub["value"].notna() & sub["start_at"].notna()].copy()
+    if sub.empty:
+        return pd.DataFrame(columns=["day", "walking_hr"])
+
+    sub["day"] = sub["start_at"].dt.floor("D")
+    out = sub.groupby("day")["value"].mean().reset_index().rename(columns={"value": "walking_hr"})
+    return out.sort_values("day").reset_index(drop=True)
 
 
 def cross_metric_daily_table(df: pd.DataFrame, wdf: pd.DataFrame) -> pd.DataFrame:
@@ -1046,6 +1189,261 @@ def generate_insights(
                     "icon": "🔗",
                     "kind": "info",
                 })
+
+    # ── Body weight trend ─────────────────────────────────────────────────────
+    wb_df = weight_bmi_daily(df)
+    if not wb_df.empty and "weight_kg" in wb_df.columns and len(wb_df) >= min_days:
+        wt = wb_df["weight_kg"].dropna()
+        if len(wt) >= 7:
+            first_w = float(wt.iloc[0])
+            last_w = float(wt.iloc[-1])
+            delta_w = last_w - first_w
+            if abs(delta_w) >= 1.0:
+                direction = "lost" if delta_w < 0 else "gained"
+                kind = "positive" if delta_w < 0 else "neutral"
+                insights.append({
+                    "title": f"Weight {direction} {abs(delta_w):.1f} kg over the period",
+                    "body": (
+                        f"You have {direction} {abs(delta_w):.1f} kg "
+                        f"(from {first_w:.1f} kg to {last_w:.1f} kg). "
+                        "Weight trends over weeks are more meaningful than day-to-day fluctuations."
+                    ),
+                    "icon": "⚖️",
+                    "kind": kind,
+                })
+
+    # ── SpO₂ alert ────────────────────────────────────────────────────────────
+    spo2_df = spo2_daily(df)
+    if not spo2_df.empty and len(spo2_df) >= 7:
+        recent_spo2 = float(spo2_df["spo2"].iloc[-7:].mean())
+        low_nights = int((spo2_df["spo2"] < 95).sum())
+        if recent_spo2 < 95:
+            insights.append({
+                "title": "Blood oxygen below normal ⚠️",
+                "body": (
+                    f"Your average SpO₂ over the last 7 readings is {recent_spo2:.1f}% "
+                    "— below the normal range (≥95%). "
+                    "Persistently low blood oxygen can indicate sleep apnea or other "
+                    "conditions worth discussing with a doctor."
+                ),
+                "icon": "🫁",
+                "kind": "negative",
+            })
+        elif low_nights >= 5:
+            insights.append({
+                "title": f"SpO₂ dipped below 95% on {low_nights} nights",
+                "body": (
+                    f"You had {low_nights} readings below 95% SpO₂. "
+                    "Occasional brief dips are normal, but frequent low readings "
+                    "during sleep may indicate sleep-disordered breathing."
+                ),
+                "icon": "💨",
+                "kind": "neutral",
+            })
+        else:
+            avg_spo2 = float(spo2_df["spo2"].mean())
+            if avg_spo2 >= 98:
+                insights.append({
+                    "title": "Excellent blood oxygen ✅",
+                    "body": (
+                        f"Your average SpO₂ is {avg_spo2:.1f}% — in the excellent range. "
+                        "Good blood oxygen reflects healthy lung and cardiovascular function."
+                    ),
+                    "icon": "✅",
+                    "kind": "positive",
+                })
+
+    # ── Blood pressure ────────────────────────────────────────────────────────
+    bp_df = blood_pressure_daily(df)
+    if not bp_df.empty and "systolic" in bp_df.columns and len(bp_df) >= 5:
+        avg_sys = float(bp_df["systolic"].dropna().mean())
+        _has_dia = "diastolic" in bp_df.columns and bp_df["diastolic"].notna().any()
+        avg_dia = float(bp_df["diastolic"].dropna().mean()) if _has_dia else None
+        if avg_sys >= 140:
+            insights.append({
+                "title": "Blood pressure: Stage 2 hypertension range ⚠️",
+                "body": (
+                    f"Your average systolic BP is {avg_sys:.0f} mmHg "
+                    f"{'/ ' + str(round(avg_dia)) + ' mmHg diastolic' if avg_dia else ''}. "
+                    "Readings ≥140/90 mmHg consistently indicate hypertension. "
+                    "Consult a healthcare professional."
+                ),
+                "icon": "🩺",
+                "kind": "negative",
+            })
+        elif avg_sys >= 130:
+            insights.append({
+                "title": "Blood pressure: elevated",
+                "body": (
+                    f"Your average systolic BP is {avg_sys:.0f} mmHg — in the Stage 1 "
+                    "hypertension range (130-139). "
+                    "Lifestyle changes (less sodium, more exercise, stress reduction) "
+                    "can bring this down."
+                ),
+                "icon": "🩺",
+                "kind": "neutral",
+            })
+        elif avg_sys < 120:
+            insights.append({
+                "title": "Blood pressure: healthy range 🟢",
+                "body": (
+                    f"Your average systolic BP is {avg_sys:.0f} mmHg "
+                    "— in the healthy normal range (<120 mmHg). "
+                    "Regular physical activity, a healthy diet and good sleep all "
+                    "contribute to healthy blood pressure."
+                ),
+                "icon": "🟢",
+                "kind": "positive",
+            })
+
+    # ── Walking HR as fitness proxy ───────────────────────────────────────────
+    whr_df = walking_hr_daily(df)
+    if not whr_df.empty and len(whr_df) >= min_days:
+        whr = whr_df["walking_hr"]
+        recent_whr = float(whr.iloc[-7:].mean())
+        older_whr = float(whr.iloc[-30:-7].mean()) if len(whr) >= 30 else float(whr.mean())
+        if len(whr) >= 30:
+            delta_whr = recent_whr - older_whr
+            if delta_whr <= -3:
+                insights.append({
+                    "title": "Walking HR improving — aerobic fitness up 📉",
+                    "body": (
+                        f"Your walking heart rate has dropped by {abs(delta_whr):.0f} bpm "
+                        f"recently ({recent_whr:.0f} bpm vs {older_whr:.0f} bpm). "
+                        "A lower walking HR at the same effort is a sign that your "
+                        "cardiovascular fitness is improving."
+                    ),
+                    "icon": "🚶",
+                    "kind": "positive",
+                })
+            elif delta_whr >= 4:
+                insights.append({
+                    "title": "Walking HR elevated this week",
+                    "body": (
+                        f"Your walking heart rate is {delta_whr:.0f} bpm higher this week "
+                        f"({recent_whr:.0f} bpm) than your recent average. "
+                        "This could reflect fatigue, illness or reduced activity. "
+                        "Worth monitoring over the next few days."
+                    ),
+                    "icon": "🚶",
+                    "kind": "neutral",
+                })
+
+    # ── Sleep debt ────────────────────────────────────────────────────────────
+    debt_df = sleep_debt_daily(df)
+    if not debt_df.empty and len(debt_df) >= 7:
+        recent_debt = float(debt_df["cumulative_debt_h"].iloc[-1])
+        nightly_avg = float(debt_df["sleep_h"].mean())
+        if recent_debt >= 7:
+            insights.append({
+                "title": f"You've built up ~{recent_debt:.0f}h of sleep debt 😴",
+                "body": (
+                    f"Based on an 8-hour goal, you have accumulated ~{recent_debt:.0f}h "
+                    f"of sleep debt (averaging {nightly_avg:.1f}h/night). "
+                    "Research shows sleep debt impairs cognition, mood and immune function. "
+                    "Catching up gradually with 30-60 min extra per night is most effective."
+                ),
+                "icon": "😴",
+                "kind": "negative",
+            })
+        elif recent_debt <= -5:
+            insights.append({
+                "title": "Sleep surplus 🌟",
+                "body": (
+                    f"You're averaging {nightly_avg:.1f}h/night — "
+                    f"{abs(recent_debt):.0f}h above an 8-hour goal. "
+                    "Consistent quality sleep this long is excellent for recovery, "
+                    "cognitive function and long-term health."
+                ),
+                "icon": "🌟",
+                "kind": "positive",
+            })
+
+    # ── Best workout type for HRV ─────────────────────────────────────────────
+    best_type_df = best_workout_type_for_hrv(df, wdf)
+    if not best_type_df.empty and len(best_type_df) >= 2:
+        best = best_type_df.iloc[0]
+        worst = best_type_df.iloc[-1]
+        if best["count"] >= 3 and worst["count"] >= 3:
+            diff = float(best["avg_hrv"]) - float(worst["avg_hrv"])
+            if diff >= 5:
+                insights.append({
+                    "title": (
+                        f"{best['workout_type']} leaves you most recovered 🏆"
+                    ),
+                    "body": (
+                        f"After {best['workout_type']} sessions your next-morning HRV "
+                        f"averages {best['avg_hrv']:.0f} ms — {diff:.0f} ms higher than "
+                        f"after {worst['workout_type']} ({worst['avg_hrv']:.0f} ms). "
+                        "Scheduling more of your best-recovery workouts may help you "
+                        "maintain higher readiness across the week."
+                    ),
+                    "icon": "🏆",
+                    "kind": "positive",
+                })
+
+    # ── HR zone balance ───────────────────────────────────────────────────────
+    zone_df = hr_zone_distribution(df)
+    if not zone_df.empty:
+        total_min = zone_df["minutes"].sum()
+        if total_min > 60:
+            z2_pct = float(
+                zone_df.loc[
+                    zone_df["zone"].str.contains("Zone 2", na=False), "pct"
+                ].values[0]
+                if not zone_df.loc[zone_df["zone"].str.contains("Zone 2", na=False)].empty
+                else 0
+            )
+            z5_pct = float(
+                zone_df.loc[
+                    zone_df["zone"].str.contains("Zone 5", na=False), "pct"
+                ].values[0]
+                if not zone_df.loc[zone_df["zone"].str.contains("Zone 5", na=False)].empty
+                else 0
+            )
+            if z2_pct >= 40:
+                insights.append({
+                    "title": "Great aerobic base training 🟢",
+                    "body": (
+                        f"You spend {z2_pct:.0f}% of your active HR time in Zone 2 "
+                        "(aerobic base). "
+                        "Zone 2 training is the foundation of endurance — it builds "
+                        "mitochondrial density and fat-burning efficiency."
+                    ),
+                    "icon": "🟢",
+                    "kind": "positive",
+                })
+            elif z5_pct >= 30:
+                insights.append({
+                    "title": "Heavy Zone 5 — add more easy training 🔴",
+                    "body": (
+                        f"You spend {z5_pct:.0f}% of your HR time in Zone 5 (VO₂ max). "
+                        "While intense training builds speed, excessive Zone 5 without "
+                        "adequate Zone 2 base work can increase injury risk and hinder "
+                        "recovery."
+                    ),
+                    "icon": "⚠️",
+                    "kind": "neutral",
+                })
+
+    # ── Resting HR vs VO₂ max synergy ─────────────────────────────────────────
+    vo2_df_i = vo2max_trend(df)
+    rhr_df_i = resting_hr_trend(df)
+    if not vo2_df_i.empty and not rhr_df_i.empty and len(vo2_df_i) >= 7:
+        latest_vo2 = float(vo2_df_i["vo2max"].iloc[-1])
+        latest_rhr = float(rhr_df_i["rhr"].iloc[-1])
+        if latest_vo2 >= 45 and latest_rhr <= 55:
+            insights.append({
+                "title": "Excellent cardio fitness profile 🏆",
+                "body": (
+                    f"Your latest VO₂ max ({latest_vo2:.1f} mL/kg/min) "
+                    f"and resting HR ({latest_rhr:.0f} bpm) are both in excellent ranges. "
+                    "This combination is one of the strongest predictors of long-term "
+                    "cardiovascular health and longevity."
+                ),
+                "icon": "🏆",
+                "kind": "positive",
+            })
 
     # ── No-insight fallback ───────────────────────────────────────────────────
     if not insights:
