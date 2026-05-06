@@ -1264,8 +1264,8 @@ def generate_insights(
                 "title": "Blood pressure: Stage 2 hypertension range ⚠️",
                 "body": (
                     f"Your average systolic BP is {avg_sys:.0f} mmHg "
-                    f"{'/ ' + str(round(avg_dia)) + ' mmHg diastolic' if avg_dia else ''}. "
-                    "Readings ≥140/90 mmHg consistently indicate hypertension. "
+                    + (f"/ {avg_dia:.0f} mmHg diastolic" if avg_dia else "")
+                    + ". Readings ≥140/90 mmHg consistently indicate hypertension. "
                     "Consult a healthcare professional."
                 ),
                 "icon": "🩺",
@@ -1387,20 +1387,10 @@ def generate_insights(
     if not zone_df.empty:
         total_min = zone_df["minutes"].sum()
         if total_min > 60:
-            z2_pct = float(
-                zone_df.loc[
-                    zone_df["zone"].str.contains("Zone 2", na=False), "pct"
-                ].values[0]
-                if not zone_df.loc[zone_df["zone"].str.contains("Zone 2", na=False)].empty
-                else 0
-            )
-            z5_pct = float(
-                zone_df.loc[
-                    zone_df["zone"].str.contains("Zone 5", na=False), "pct"
-                ].values[0]
-                if not zone_df.loc[zone_df["zone"].str.contains("Zone 5", na=False)].empty
-                else 0
-            )
+            _z2_rows = zone_df.loc[zone_df["zone"].str.contains("Zone 2", na=False), "pct"]
+            z2_pct = float(_z2_rows.values[0]) if not _z2_rows.empty else 0.0
+            _z5_rows = zone_df.loc[zone_df["zone"].str.contains("Zone 5", na=False), "pct"]
+            z5_pct = float(_z5_rows.values[0]) if not _z5_rows.empty else 0.0
             if z2_pct >= 40:
                 insights.append({
                     "title": "Great aerobic base training 🟢",

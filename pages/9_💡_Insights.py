@@ -972,8 +972,9 @@ else:
         )
         layers.append(bmi_line)
         st.caption(
-            "Blue area = weight (kg) · Orange dashed = BMI — Note: axes share scale only when "
-            "values overlap. Use the correlation heatmap to cross-reference."
+            "Blue area = weight (kg) · Orange dashed = BMI — "
+            "Axes are independent (different scales). "
+            "Use the correlation heatmap to cross-reference."
         )
 
     st.altair_chart(
