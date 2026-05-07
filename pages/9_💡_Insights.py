@@ -1630,6 +1630,7 @@ with tab_report:
         y = readiness["score"].values
         coeffs = np.polyfit(x, y, 1)
         slope = coeffs[0]
+        trend_dir = "Rising" if slope > 0.5 else ("Falling" if slope < -0.5 else "Stable")
         last_score = float(readiness["score"].iloc[-1])
         forecast_cols = st.columns(3)
         for i, (fc_col, day_label) in enumerate(zip(forecast_cols, ["Tomorrow", "Day +2", "Day +3"])):

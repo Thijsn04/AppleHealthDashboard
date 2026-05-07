@@ -73,8 +73,7 @@ def main() -> None:
     with st.sidebar:
         sidebar_nav(current="Home")
         st.divider()
-        st.caption(f"Database: `{default_db_path().name}`")
-        st.page_link("pages/10_⚙️_Settings.py", label="⚙️ Manage Data")
+        st.caption(f"DB: `{default_db_path().name}`")
 
     db_path = default_db_path()
 
@@ -127,6 +126,17 @@ def main() -> None:
             prev_score = readiness["score"].iloc[-2] if len(readiness) >= 2 else score
             pill = trend_pill(score - prev_score)
 
+            # Build detail string safely
+            details = []
+            if "hrv" in latest_r and latest_r["hrv"] is not None:
+                details.append(f"HRV: {latest_r['hrv']:.0f} ms")
+            if "rhr" in latest_r and latest_r["rhr"] is not None:
+                details.append(f"RHR: {latest_r['rhr']:.0f} bpm")
+            if "sleep_h" in latest_r and latest_r["sleep_h"] is not None:
+                details.append(f"Sleep: {latest_r['sleep_h']:.1f} h")
+            
+            detail_html = f"<div style='margin-top:8px;font-size:0.8rem;opacity:0.6;'>{' · '.join(details)}</div>" if details else ""
+
             st.markdown(f"""
 <div class="ahd-card">
   <div style="display:flex;align-items:center;gap:16px;">
@@ -140,7 +150,7 @@ def main() -> None:
       </div>
     </div>
   </div>
-  {"<div style='margin-top:8px;font-size:0.8rem;opacity:0.6;'>HRV: " + f"{latest_r['hrv']:.0f} ms" + " · RHR: " + f"{latest_r['rhr']:.0f} bpm" + " · Sleep: " + f"{latest_r['sleep_h']:.1f} h</div>" if all(c in readiness.columns for c in ['hrv','rhr','sleep_h']) else ""}
+  {detail_html}
 </div>""", unsafe_allow_html=True)
             st.page_link("pages/9_💡_Insights.py", label="View Readiness Details →")
 

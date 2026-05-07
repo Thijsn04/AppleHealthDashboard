@@ -16,9 +16,9 @@ def calendar_heatmap(df: pd.DataFrame, date_col: str, value_col: str, title: str
     # Extract time features
     df_h["month"] = df_h[date_col].dt.month
     df_h["year"] = df_h[date_col].dt.year
-    df_h["day"] = df_h[date_col].dt.date
     df_h["week"] = df_h[date_col].dt.isocalendar().week
-    df_h["day_of_week"] = df_h[date_col].dt.dayofweek # 0=Mon, 6=Sun
+    df_h["day_of_week"] = df_h[date_col].dt.dayofweek  # 0=Mon, 6=Sun
+    df_h["day"] = df_h[date_col].dt.date  # overwrite last — keep datetime for .dt above
     
     # Map day names
     days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]

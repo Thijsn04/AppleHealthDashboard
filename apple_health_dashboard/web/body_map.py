@@ -1,14 +1,15 @@
+import json
 import streamlit.components.v1 as components
 
 def render_body_map(selected_regions=None):
     """
-    Renders an interactive SVG body map.
+    Renders an interactive SVG body map. Pre-highlights `selected_regions`.
     """
     if selected_regions is None:
         selected_regions = []
 
-    # Simplified Body Map SVG with interactive regions
-    # In a real app, this would be a full high-fidelity SVG path set.
+    selected_json = json.dumps(selected_regions)
+
     svg_body = f"""
     <div id="body-map-container" style="display: flex; justify-content: center; gap: 40px; padding: 20px;">
         <div class="body-view">
@@ -45,31 +46,34 @@ def render_body_map(selected_regions=None):
     <script>
         const regions = document.querySelectorAll('.region');
         const tooltip = document.getElementById('tooltip');
-        
+        const preSelected = {selected_json};
+
         regions.forEach(r => {{
             const name = r.getAttribute('data-region');
-            
+
+            if (preSelected.includes(name)) {{
+                r.classList.add('active');
+            }}
+
             r.addEventListener('mouseenter', (e) => {{
                 tooltip.style.opacity = 1;
                 tooltip.innerText = name;
             }});
-            
+
             r.addEventListener('mousemove', (e) => {{
                 tooltip.style.left = (e.pageX + 10) + 'px';
                 tooltip.style.top = (e.pageY + 10) + 'px';
             }});
-            
+
             r.addEventListener('mouseleave', () => {{
                 tooltip.style.opacity = 0;
             }});
-            
+
             r.addEventListener('click', () => {{
-                // In a real Streamlit component, we would send this back to Python
-                // For this version, we'll just toggle the class
                 r.classList.toggle('active');
             }});
         }});
     </script>
     """
-    
+
     components.html(svg_body, height=450)

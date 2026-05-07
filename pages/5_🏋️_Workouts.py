@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
@@ -19,35 +19,34 @@ from apple_health_dashboard.web.page_utils import (
 )
 
 st.set_page_config(
-    page_title="Workouts Â· Apple Health Dashboard",
-    page_icon="ðŸ‹ï¸",
+    page_title="Workouts · Apple Health Dashboard",
+    page_icon="🏋️",
     layout="wide",
 )
 
-page_header("ðŸ‹ï¸", "Workouts", "All workout types, personal records, weekly trends and calendar view.")
+page_header("🏋️", "Workouts", "All workout types, personal records, weekly trends and calendar view.")
 
 db_path = default_db_path()
 
-with st.spinner("Loading workoutsâ€¦"):
+with st.spinner("Loading workouts..."):
     wdf = load_all_workouts(str(db_path))
 
 if wdf.empty:
     st.warning("No workouts found. Please import your Apple Health export on the Home page.")
-    st.page_link("app.py", label="Go to Home â†’", icon="ðŸ ")
+    st.page_link("app.py", label="Go to Home →", icon="🏠")
     st.stop()
 
-# â”€â”€ Date filter needs a start_at reference â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Date filter needs a start_at reference ────────────────────────────────────
 # Build a minimal "df" just for the date filter
 _date_df = wdf[["start_at"]].rename(columns={"start_at": "start_at"})
 _date_df["type"] = "workout"
 
 from apple_health_dashboard.services.filters import infer_date_filter, DateFilter
-from apple_health_dashboard.services.stats import to_dataframe
 
 with st.sidebar:
     sidebar_nav(current="Workouts")
     st.divider()
-    st.markdown("### ðŸ“… Date Range")
+    st.markdown("### 📅 Date Range")
     preset = st.selectbox("Preset", ["All", "7D", "30D", "90D", "180D", "1Y"], index=3)
     preset_filter = infer_date_filter(_date_df, preset=preset)
     if preset_filter is None:
@@ -74,7 +73,7 @@ with st.sidebar:
 wdf_f = wdf[(wdf["start_at"] >= date_filter.start) & (wdf["start_at"] <= date_filter.end)].copy()
 
 with st.sidebar:
-    st.caption(f"{date_filter.start.date()} â†’ {date_filter.end.date()}")
+    st.caption(f"{date_filter.start.date()} → {date_filter.end.date()}")
 
     # Workout type filter
     label_col = "activity_label" if "activity_label" in wdf_f.columns else "workout_activity_type"
@@ -87,7 +86,7 @@ if wdf_f.empty:
     st.info("No workouts in the selected period.")
     st.stop()
 
-# â”€â”€ KPIs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── KPIs ──────────────────────────────────────────────────────────────────────
 c1, c2, c3, c4, c5 = st.columns(5)
 total_workouts = len(wdf_f)
 total_hours = wdf_f["duration_s"].fillna(0).sum() / 3600
@@ -103,9 +102,9 @@ c5.metric("Activity Types", f"{unique_types}")
 
 st.divider()
 
-tabs = st.tabs(["Overview", "By Type", "Personal Records", "Calendar", "Training Load", "Raw Data"])
+tabs = st.tabs(["Overview", "By Type", "Personal Records", "Calendar", "Training Load", "Muscle Tracking", "Raw Data"])
 
-# â”€â”€ Overview tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Overview tab ───────────────────────────────────────────────────────────────
 with tabs[0]:
     col_l, col_r = st.columns(2)
 
@@ -158,7 +157,7 @@ with tabs[0]:
     with col_table:
         st.dataframe(type_counts, width="stretch", hide_index=True)
 
-# â”€â”€ By Type tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── By Type tab ────────────────────────────────────────────────────────────────
 with tabs[1]:
     st.subheader("Aggregates by Workout Type")
     by_type = summarize_by_type(wdf_f)
@@ -204,7 +203,7 @@ with tabs[1]:
                         width="stretch",
                     )
 
-# â”€â”€ Personal Records tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Personal Records tab ───────────────────────────────────────────────────────
 with tabs[2]:
     st.subheader("Personal Records")
     st.caption("Best single-session performance per workout type.")
@@ -234,7 +233,7 @@ with tabs[2]:
             },
         )
 
-# â”€â”€ Calendar tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Calendar tab ───────────────────────────────────────────────────────────────
 with tabs[3]:
     st.subheader("Workout Calendar Heatmap")
     cal_df = workout_calendar_heatmap_data(wdf_f)
@@ -283,14 +282,14 @@ with tabs[3]:
         monthly["Total Hours"] = monthly["Total Hours"].round(1)
         st.dataframe(monthly, width="stretch", hide_index=True)
 
-# â”€â”€ Training Load tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Training Load tab ──────────────────────────────────────────────────────────
 with tabs[4]:
     st.subheader("Training Load & Running Pace")
     st.caption("Weekly training load estimate (TRIMP proxy) and running pace trend.")
 
     import altair as alt
 
-    # Weekly TRIMP proxy: duration Ã— an intensity factor (1 for low, 1.5 medium, 2 hard)
+    # Weekly TRIMP proxy: duration × an intensity factor (1 for low, 1.5 medium, 2 hard)
     INTENSITY_MAP = {
         "Running": 1.8, "Cycling": 1.5, "Swimming": 1.7, "HIIT": 2.0,
         "CrossTraining": 1.6, "Walking": 0.8, "Yoga": 0.6, "Strength Training": 1.4,
@@ -320,17 +319,17 @@ with tabs[4]:
                 .interactive()
             )
             st.altair_chart(load_chart, width="stretch")
-            st.caption("AU = Arbitrary Units. Duration Ã— intensity factor. Higher = harder week.")
+            st.caption("AU = Arbitrary Units. Duration × intensity factor. Higher = harder week.")
         with col_tl2:
             st.metric("Peak week load", f"{weekly_load['load'].max():.0f} AU")
             st.metric("Avg week load", f"{weekly_load['load'].mean():.0f} AU")
             st.metric("Recent vs avg",
-                      f"{weekly_load['load'].iloc[-1]:.0f} AU" if len(weekly_load) >= 1 else "â€”",
+                      f"{weekly_load['load'].iloc[-1]:.0f} AU" if len(weekly_load) >= 1 else "—",
                       delta=f"{weekly_load['load'].iloc[-1] - weekly_load['load'].mean():+.0f}" if len(weekly_load) >= 1 else None)
 
     # Running pace trend
     st.divider()
-    st.markdown("**ðŸƒ Running Pace Trend**")
+    st.markdown("**🏃 Running Pace Trend**")
     run_df = wdf_f[wdf_f[label_col].str.contains("Run", case=False, na=False)].copy()
     if not run_df.empty and run_df["total_distance_m"].notna().any() and run_df["duration_s"].notna().any():
         run_df = run_df[(run_df["total_distance_m"] > 100) & (run_df["duration_s"] > 60)].copy()
@@ -361,8 +360,26 @@ with tabs[4]:
     else:
         st.info("No running workouts with distance data found.")
 
-# â”€â”€ Raw Data tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Muscle Tracking tab ────────────────────────────────────────────────────────
 with tabs[5]:
+    st.subheader("Muscle Group Engagement")
+    st.caption("Based on your recent workout types, here is a heatmap of your muscle engagement.")
+    
+    from apple_health_dashboard.web.body_map import render_body_map
+    
+    # Simple heuristic for muscle engagement
+    engaged = []
+    types_str = " ".join(wdf_f[label_col].astype(str).tolist()).lower()
+    if any(x in types_str for x in ["run", "walk", "cycle", "leg"]): engaged.extend(["Left Leg", "Right Leg"])
+    if any(x in types_str for x in ["strength", "pushup", "bench", "chest", "arm"]): engaged.extend(["Left Arm", "Right Arm", "Torso"])
+    if any(x in types_str for x in ["back", "row", "pull"]): engaged.append("Torso")
+    
+    render_body_map(selected_regions=list(set(engaged)))
+    
+    st.info("Interactive muscle tracking is based on workout type inference. You can manually highlight areas for pain/symptom tracking on the **Body** page.")
+
+# ── Raw Data tab ────────────────────────────────────────────────────────────
+with tabs[6]:
     st.subheader("All Workouts")
     display_cols = [label_col, "start_at", "end_at", "duration_s", "total_energy_kcal",
                     "total_distance_m", "source_name"]
@@ -374,7 +391,7 @@ with tabs[5]:
 
     # CSV export
     csv_data = raw.drop(columns=["duration_s", "total_distance_m"], errors="ignore").to_csv(index=False)
-    st.download_button("â¬‡ï¸ Download as CSV", data=csv_data, file_name="workouts.csv",
+    st.download_button("⬇️ Download as CSV", data=csv_data, file_name="workouts.csv",
                        mime="text/csv", help="Download all filtered workouts as CSV")
 
     st.dataframe(

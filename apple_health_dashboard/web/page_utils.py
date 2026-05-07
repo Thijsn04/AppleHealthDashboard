@@ -5,10 +5,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from apple_health_dashboard.services.activity_summary import activity_summaries_to_dataframe
 from apple_health_dashboard.services.filters import DateFilter, infer_date_filter
-from apple_health_dashboard.services.stats import to_dataframe
-from apple_health_dashboard.services.workouts import workouts_to_dataframe
 from apple_health_dashboard.storage.duckdb_store import (
     init_db,
     iter_activity_summaries,
@@ -78,8 +75,39 @@ header[data-testid="stHeader"] { background: transparent !important; }
 }
 
 [data-testid="stSidebar"] {
-  border-right: 1px solid rgba(16, 185, 129, 0.1) !important;
-  background: rgba(255, 255, 255, 0.02) !important;
+  background: #F5FAF7 !important;
+  border-right: 1.5px solid rgba(46,125,110,0.22) !important;
+}
+
+[data-testid="stSidebar"] .element-container {
+  margin-bottom: 1px !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stPageLink"] {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+[data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"] {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.55rem !important;
+  padding: 0.42rem 0.85rem !important;
+  border-radius: 8px !important;
+  border-left: 3px solid transparent !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  color: #374151 !important;
+  text-decoration: none !important;
+  line-height: 1.4 !important;
+  transition: background 0.15s ease, color 0.15s ease !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+[data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"]:hover {
+  background: rgba(46,125,110,0.09) !important;
+  color: #1A5048 !important;
 }
 
 [data-testid="stMetric"] {
@@ -112,9 +140,6 @@ header[data-testid="stHeader"] { background: transparent !important; }
   background-color: rgba(16, 185, 129, 0.15) !important;
   border: 1px solid rgba(16, 185, 129, 0.3) !important;
   color: #10B981 !important;
-}
-</style>"""
-  border-color: rgba(46,125,110,0.2) !important;
 }
 
 
@@ -153,13 +178,21 @@ header[data-testid="stHeader"] { background: transparent !important; }
 
 
 .ahd-nav-active {
-  padding: 0.375rem 0.75rem; border-radius: 8px;
-  background: rgba(46,125,110,0.16);
-  font-weight: 600; font-size: 1rem;
-  color: #1A5048; margin-bottom: 2px;
-  display: flex; align-items: center; gap: 0.75rem;
-  line-height: 1.5;
+  display: flex; align-items: center; gap: 0.55rem;
+  padding: 0.42rem 0.85rem;
+  border-radius: 0 8px 8px 0;
   border-left: 3px solid #2E7D6E;
+  background: rgba(46,125,110,0.13);
+  font-size: 0.875rem; font-weight: 700;
+  color: #1A5048; line-height: 1.4;
+}
+
+.ahd-sidebar-section {
+  font-size: 0.67rem; font-weight: 700;
+  color: #2E7D6E; text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 12px 0.85rem 3px;
+  opacity: 0.72;
 }
 
 
@@ -322,7 +355,11 @@ hr {
 .ahd-sticky-item { font-size: 0.82rem; font-weight: 600; color: #1A5048; }
 .ahd-sticky-val  { font-size: 0.95rem; font-weight: 800; color: #0D2822; }
 
-[data-testid="stSidebarNav"] { display: none !important; }
+/* hide Streamlit's built-in MPA nav regardless of version */
+[data-testid="stSidebarNav"],
+[data-testid="stSidebarNavSeparator"],
+[data-testid="stSidebarNavItems"],
+section[data-testid="stSidebar"] > div:first-child > ul { display: none !important; }
 </style>
 """
 
@@ -419,11 +456,19 @@ def page_config(title: str, icon: str = "🍎") -> None:
     st.set_page_config(page_title=f"{title} · Apple Health Dashboard", page_icon=icon, layout="wide")
 
 
-def sidebar_date_filter(df: pd.DataFrame) -> DateFilter | None:
-    """Render the standard date filter sidebar and return the selected filter."""
+def sidebar_date_filter(df: pd.DataFrame, current: str | None = None) -> DateFilter | None:
+    """Render the date filter in the sidebar and return the selected filter."""
     with st.sidebar:
-        st.markdown("### 📅 Date Range")
-        preset = st.selectbox("Preset", ["All", "7D", "30D", "90D", "180D", "1Y"], index=3)
+        st.markdown(
+            '<div class="ahd-sidebar-section" style="padding-top:16px;">📅 Date Range</div>',
+            unsafe_allow_html=True,
+        )
+        preset = st.selectbox(
+            "Preset",
+            ["All", "7D", "30D", "90D", "180D", "1Y"],
+            index=3,
+            label_visibility="collapsed",
+        )
         preset_filter = infer_date_filter(df, preset=preset)
         if preset_filter is None:
             return None
@@ -437,6 +482,7 @@ def sidebar_date_filter(df: pd.DataFrame) -> DateFilter | None:
                 value=(min_d, max_d),
                 min_value=min_d,
                 max_value=max_d,
+                label_visibility="collapsed",
             )
             if isinstance(dates, (list, tuple)) and len(dates) == 2:
                 start_d, end_d = dates
@@ -445,6 +491,21 @@ def sidebar_date_filter(df: pd.DataFrame) -> DateFilter | None:
                     end=pd.Timestamp(end_d, tz="UTC") + pd.Timedelta(days=1) - pd.Timedelta(seconds=1),
                 )
         return preset_filter
+
+
+def setup_page_nav(current: str, df: pd.DataFrame | None = None) -> "DateFilter | None":
+    """One-call sidebar setup: inject CSS, render nav, optionally add date filter.
+
+    Call right after st.set_page_config().  If *df* is supplied the date filter
+    is rendered and the resulting DateFilter is returned; otherwise returns None.
+    """
+    inject_global_css()
+    with st.sidebar:
+        sidebar_nav(current=current)
+        st.divider()
+    if df is not None:
+        return sidebar_date_filter(df)
+    return None
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -529,30 +590,37 @@ _NAV_SECTIONS = {
 }
 
 def sidebar_nav(*, current: str = "") -> None:
-    """Render branded page navigation inside the sidebar."""
+    """Render branded sidebar navigation."""
     st.markdown(
-        """<div style="display:flex;align-items:center;gap:9px;
-                       padding:4px 0 12px 0;
-                       border-bottom:1px solid rgba(46,125,110,0.14);
-                       margin-bottom:16px;">
-          <span style="font-size:1.35rem;line-height:1;">🍎</span>
-          <span style="font-size:0.95rem;font-weight:800;color:#0D2822;
-                       letter-spacing:-0.022em;line-height:1.2;">Apple Health</span>
+        """<div style="display:flex;align-items:center;gap:10px;
+                       padding:8px 0.85rem 14px;
+                       border-bottom:1.5px solid rgba(46,125,110,0.2);
+                       margin-bottom:6px;">
+          <span style="font-size:1.5rem;line-height:1;">🍎</span>
+          <div>
+            <div style="font-size:0.9rem;font-weight:800;color:#0D2822;
+                        letter-spacing:-0.022em;line-height:1.2;">Apple Health</div>
+            <div style="font-size:0.68rem;color:#2E7D6E;font-weight:600;
+                        opacity:0.8;margin-top:1px;">Dashboard</div>
+          </div>
         </div>""",
         unsafe_allow_html=True,
     )
     for section_name, pages in _NAV_SECTIONS.items():
-        st.markdown(f'<div style="font-size:0.75rem;font-weight:700;color:#2E7D6E;opacity:0.8;text-transform:uppercase;letter-spacing:0.05em;margin:12px 0 4px 6px;">{section_name}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="ahd-sidebar-section">{section_name}</div>',
+            unsafe_allow_html=True,
+        )
         for icon, label, page in pages:
-            is_current = label == current
-            if is_current:
+            if label == current:
                 st.markdown(
-                    f'<div class="ahd-nav-active" style="margin-bottom:2px;"><span>{icon}</span><span>{label}</span></div>',
+                    f'<div class="ahd-nav-active"><span>{icon}</span>'
+                    f'<span>{label}</span></div>',
                     unsafe_allow_html=True,
                 )
             else:
                 st.page_link(page, label=label, icon=icon)
-        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
 
 def require_data(db_path: Path) -> pd.DataFrame | None:

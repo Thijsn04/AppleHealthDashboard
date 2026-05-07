@@ -29,6 +29,7 @@ from apple_health_dashboard.web.page_utils import (
     load_all_records,
     page_header,
     sidebar_date_filter,
+    sidebar_nav,
 )
 
 st.set_page_config(
@@ -40,6 +41,10 @@ st.set_page_config(
 page_header("❤️", "Heart Health", "Heart rate, HRV, VO₂ max, blood pressure & blood oxygen.")
 
 db_path = default_db_path()
+
+with st.sidebar:
+    sidebar_nav(current="Heart")
+    st.divider()
 
 with st.spinner("Loading heart data…"):
     df = load_all_records(str(db_path))

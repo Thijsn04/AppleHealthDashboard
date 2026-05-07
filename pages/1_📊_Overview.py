@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import pandas as pd
 import streamlit as st
 
@@ -16,6 +17,7 @@ from apple_health_dashboard.services.readiness import calculate_readiness_score
 from apple_health_dashboard.services.stats import detect_outliers_zscore
 from apple_health_dashboard.storage.notes_store import load_notes, save_note
 from apple_health_dashboard.web.page_utils import (
+    inject_global_css,
     sidebar_nav,
     load_all_activity_summaries,
     load_all_records,
@@ -29,6 +31,7 @@ st.set_page_config(
     page_icon="📊",
     layout="wide",
 )
+inject_global_css()
 
 with st.sidebar:
     sidebar_nav(current="Overview")

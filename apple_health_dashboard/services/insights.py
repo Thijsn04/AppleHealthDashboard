@@ -1075,13 +1075,14 @@ def generate_insights(
             })
 
     # ── Workout type diversity ────────────────────────────────────────────────
-    if not wdf.empty and "activity_type" in wdf.columns and len(wdf) >= 10:
+    _wtype_col = "activity_label" if not wdf.empty and "activity_label" in wdf.columns else "workout_activity_type"
+    if not wdf.empty and _wtype_col in wdf.columns and len(wdf) >= 10:
         from apple_health_dashboard.services.workouts import workout_label
 
-        n_types = wdf["activity_type"].nunique()
-        top_type = wdf["activity_type"].value_counts().idxmax()
-        top_label = workout_label(top_type)
-        top_pct = float(wdf["activity_type"].value_counts().iloc[0] / len(wdf) * 100)
+        n_types = wdf[_wtype_col].nunique()
+        top_type = wdf[_wtype_col].value_counts().idxmax()
+        top_label = workout_label(top_type) if _wtype_col == "workout_activity_type" else top_type
+        top_pct = float(wdf[_wtype_col].value_counts().iloc[0] / len(wdf) * 100)
         if n_types >= 4:
             insights.append({
                 "title": f"Varied training — {n_types} different workout types 🎯",
