@@ -1,7 +1,28 @@
-# Apple Health Dashboard
+<div align="center">
 
-A local, privacy-first dashboard to explore **all** your Apple Health data — from sleep stages
-and heart rate variability to VO₂ max, workout personal records and body composition trends.
+# 📊 Apple Health Dashboard
+
+**A privacy-first, 100% local dashboard for your entire Apple Health export**
+
+Explore **all** your Apple Health data — from sleep stages and heart rate variability to VO₂ max, workout personal records and body composition trends. Nothing ever leaves your machine.
+
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B.svg?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![DuckDB](https://img.shields.io/badge/DuckDB-FFF000.svg?logo=duckdb&logoColor=black)](https://duckdb.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+</div>
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **UI** | Streamlit (multipage) · Altair charts |
+| **Data** | DuckDB (local database) · streaming XML parsers |
+| **Language** | Python 3.11+ |
+| **Tooling** | pytest · ruff |
 
 ## Features
 
@@ -150,3 +171,10 @@ delete_local_data()  # removes ./health.duckdb and ./.tmp/
 ## License
 
 This project is released under the [MIT License](LICENSE).
+
+
+---
+
+<div align="center">
+<sub>Built by <a href="https://github.com/Thijsn04">Thijs Nannings</a> · Medical Informatics @ UvA · <a href="https://lythos.nl">Lythos</a></sub>
+</div>
