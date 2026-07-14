@@ -1,22 +1,23 @@
+<div align="center">
+
 # Apple Health Analyzer
 
-A private, local-first, open-source analyzer for Apple Health exports.
+**A private, locally hosted analyzer for Apple Health exports**
 
-Apple Health Analyzer helps you inspect the data you already own without sending it to an account, an analytics service, or an advertising network. It is a wellness and data-exploration tool, not a medical device and not a substitute for clinical care.
+Import an Apple Health XML or ZIP export, inspect the measurements you own, and explore clear daily trends across activity, heart, sleep, workouts, body, nutrition, mobility, and more. A local FastAPI API, a clean React web application, and no account, trackers, or cloud upload required.
 
-> [!NOTE]
-> The product frontend is React and TypeScript, backed by the local FastAPI service. The earlier Streamlit user interface and cloud-backed health chat have been removed rather than carried forward as privacy debt.
+[![CI](https://github.com/Thijsn04/AppleHealthDashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/Thijsn04/AppleHealthDashboard/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-20232A.svg?logo=react&logoColor=61DAFB)](https://react.dev/)
+[![DuckDB](https://img.shields.io/badge/DuckDB-FFF000.svg?logo=duckdb&logoColor=000000)](https://duckdb.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Why it exists
+</div>
 
-- Your health export stays on your machine by default.
-- Every derived metric should state its method and limitations.
-- Raw data, sources, units, and import provenance should remain inspectable.
-- The project should be useful to users and maintainable by contributors.
+---
 
 ## Quick start
-
-### Local API and web application
 
 ```powershell
 git clone https://github.com/Thijsn04/AppleHealthDashboard.git
@@ -24,85 +25,96 @@ cd AppleHealthDashboard
 python -m pip install -e ".[dev]"
 npm --prefix frontend install
 
-# Terminal 1: local API with interactive documentation at /api/docs
+# Terminal 1: local API and interactive documentation
 apple-health serve
 
-# Terminal 2: web frontend
+# Terminal 2: product web application
 npm --prefix frontend run dev
 ```
 
-Open the address shown by Vite, normally `http://localhost:5173`. The frontend communicates only with the local API.
+Then open:
 
-## Current capabilities
+- Web application: `http://localhost:5173`
+- API documentation: `http://127.0.0.1:8000/api/docs`
 
-| Area | Current state |
-| --- | --- |
-| Apple Health XML and ZIP input | Supported by the local API with preview and explicit confirmation |
-| Local DuckDB storage | Supported |
-| Activity, heart, body, nutrition, mobility, respiratory, symptoms, environment, mind, and other observed types | Supported through catalog-driven metric routes |
-| Sleep, workouts, rings, raw record explorer | Supported by dedicated API-backed frontend routes |
-| Local REST API | Available at `/api/v1`, with interactive documentation at `/api/docs` |
-| React and TypeScript frontend | Available in `frontend/` |
-| Import preview and atomic persistence | Supported by the local API |
-| Import manifests, profiles, migration system, data-quality reports | Planned |
-| Optional AI | Not included. Any future integration must be opt-in and make every external data transfer visible. |
+In Apple Health on iPhone, open your profile and choose **Export All Health Data**. Select the generated ZIP or `export.xml` in the web application, review the local preview, then confirm the import.
 
-Read the detailed [capability matrix](docs/CAPABILITY_MATRIX.md) before relying on a metric.
+## Four ways to use it
 
-## Create an Apple Health export
+**Web application.** Import an export, review profile totals, inspect activity, heart, sleep, workout, ring, body, nutrition, mobility, and symptom metrics, and verify source observations in the Explorer.
 
-On iPhone, open Health, choose your profile, then choose **Export All Health Data**. Apple creates a ZIP that contains `apple_health_export/export.xml`.
+**Local REST API.** Use the documented `/api/v1` contract to preview imports, confirm an import, list observed metric types, retrieve daily series, and browse bounded record pages. Interactive reference is available at `/api/docs`.
 
-The export may contain data from many sources and devices. A record in the analyzer is not necessarily an Apple Watch measurement, and it is not necessarily clinically validated. Always inspect the source and record context.
+**Command line.** Start the local service with:
 
-## Privacy
+```powershell
+apple-health serve
+apple-health serve --port 8100
+```
 
-- No account, cloud sync, analytics, or telemetry is required.
-- The default database is local and excluded from Git.
-- The new API binds to `127.0.0.1` by default.
-- The frontend ships without remote fonts, trackers, telemetry, or cloud AI integrations.
-- Do not expose the local API on a network interface unless you add authentication and transport security.
+**Extensible analytics layer.** Add a metric definition, its method, and a tested aggregation policy in Python. The API catalog and React metric routes use that shared metadata rather than duplicating health logic in the UI.
 
-See the full [privacy policy and data-handling model](docs/PRIVACY.md).
+## What it analyzes
+
+Apple Health exports are heterogeneous. The analyzer preserves raw source records in local DuckDB storage and presents them through documented aggregation policies.
+
+- Activity: steps, distance, energy, exercise, stand time, flights, and running metrics.
+- Heart and respiratory: heart rate, resting heart rate, HRV, cardio fitness, blood pressure, blood oxygen, and respiratory rate.
+- Sleep: nightly asleep duration and exported sleep-stage totals.
+- Workouts and rings: session totals, training volume, workout-type mix, and Apple Activity summaries.
+- Body and nutrition: weight, BMI, body composition, dietary energy, macros, water, sodium, and caffeine when exported.
+- Mobility, symptoms, environment, mind, and other exported record types through catalog-driven metric views and the raw-record Explorer.
+
+Every profile differs. A missing screen value means the selected export did not contain a compatible record, not that the analyzer inferred a value.
+
+## Highlights
+
+- Local-first by default. No account, cloud sync, analytics, telemetry, remote fonts, or cloud AI integration.
+- Safe Apple Health XML and ZIP handling with archive path, size, and compression-ratio checks.
+- Preview and explicit confirmation before health records are persisted.
+- Atomic, idempotent local imports backed by DuckDB.
+- Bounded API responses and paginated raw-record inspection for large histories.
+- Typed FastAPI contract with interactive OpenAPI documentation.
+- Responsive React interface with semantic controls, focus states, charts, tables, empty states, and method context.
+- Clear separation between wellness data exploration and medical advice.
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Data model](docs/DATA_MODEL.md)
-- [Capability matrix](docs/CAPABILITY_MATRIX.md)
-- [Metric methodology](docs/METRICS.md)
-- [Privacy and security](docs/PRIVACY.md)
-- [Roadmap](docs/ROADMAP.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
+| Guide | What it covers |
+|---|---|
+| [Architecture](docs/ARCHITECTURE.md) | System boundaries and engineering rules |
+| [Data model](docs/DATA_MODEL.md) | Local DuckDB tables and data flow |
+| [Capability matrix](docs/CAPABILITY_MATRIX.md) | Current support and planned areas |
+| [Metric methodology](docs/METRICS.md) | Source types, aggregation, caveats, and units |
+| [Privacy](docs/PRIVACY.md) | Local-only data handling and security boundaries |
+| [Roadmap](docs/ROADMAP.md) | Import, analytics, and interoperability work ahead |
+| [Contributing](CONTRIBUTING.md) | Development setup and contribution expectations |
+| [Security policy](SECURITY.md) | Responsible vulnerability reporting |
 
 ## Development
 
 ```powershell
+python -m pip install -e ".[dev]"
+npm --prefix frontend install
 python -m pytest
 python -m ruff check .
 npm --prefix frontend run build
 ```
 
-The repository disallows em dashes. This is enforced by `tests/test_repository_style.py`.
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), keep all fixtures synthetic, and do not commit personal health exports, databases, credentials, or identifiable screenshots.
 
-## Project layout
+## A note on health data
 
-```text
-apple_health_dashboard/
-  api/                 FastAPI app and local API contract
-  ingest/              Streaming Apple Health parsers
-  services/            Domain analytics and metric logic
-  storage/             DuckDB persistence
-frontend/              React and TypeScript frontend
-docs/                  Product, data, privacy, and engineering documentation
-tests/                 Unit and integration tests using synthetic data only
-```
+Apple Health records can come from different devices and apps, may overlap, and are not necessarily clinically validated. Apple Health Analyzer is for personal wellness exploration and data inspection. It is not a medical device, a diagnostic service, or a replacement for qualified clinical care.
 
-## Contributing
-
-Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), keep fixtures synthetic, and do not commit personal health exports, databases, credentials, or screenshots containing identifiable data.
+The repository disallows em dashes in tracked text. This is enforced by `tests/test_repository_style.py`.
 
 ## License
 
-[MIT](LICENSE)
+MIT. Free to use in personal, educational, open-source, and commercial projects.
+
+---
+
+<div align="center">
+<sub>Built by <a href="https://github.com/Thijsn04">Thijs Nannings</a> · Medical Informatics @ UvA · <a href="https://lythos.nl">Lythos</a></sub>
+</div>
