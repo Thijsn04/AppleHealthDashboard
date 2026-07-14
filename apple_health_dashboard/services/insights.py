@@ -493,7 +493,7 @@ def best_workout_type_for_hrv(
 def weight_bmi_daily(df: pd.DataFrame) -> pd.DataFrame:
     """Return daily weight (kg) and BMI, merged on day.
 
-    Returns columns: day, weight_kg, bmi (both are optional — only present rows are returned).
+    Returns columns: day, weight_kg, bmi (both are optional - only present rows are returned).
     """
     from apple_health_dashboard.services.body import bmi_trend, weight_trend
 
@@ -699,7 +699,7 @@ def generate_insights(
             insights.append({
                 "title": "Below recommended sleep",
                 "body": (
-                    f"Your average sleep is {avg:.1f}h — below the 7h minimum recommended "
+                    f"Your average sleep is {avg:.1f}h - below the 7h minimum recommended "
                     "for adults. Even 30 more minutes per night can meaningfully improve "
                     "HRV, focus and cardiovascular health."
                 ),
@@ -717,7 +717,7 @@ def generate_insights(
             pct_change = (recent_hrv - older_hrv) / max(older_hrv, 0.1) * 100
             if pct_change >= 10:
                 insights.append({
-                    "title": "HRV rising — great recovery 🟢",
+                    "title": "HRV rising - great recovery 🟢",
                     "body": (
                         f"Your 7-day average HRV ({recent_hrv:.0f} ms) is "
                         f"{pct_change:.0f}% higher than your 30-day average ({older_hrv:.0f} ms). "
@@ -728,7 +728,7 @@ def generate_insights(
                 })
             elif pct_change <= -10:
                 insights.append({
-                    "title": "HRV dropping — consider recovery",
+                    "title": "HRV dropping - consider recovery",
                     "body": (
                         f"Your 7-day average HRV ({recent_hrv:.0f} ms) is "
                         f"{abs(pct_change):.0f}% below your 30-day average ({older_hrv:.0f} ms). "
@@ -752,7 +752,7 @@ def generate_insights(
                     f"There is a {strength} {'positive' if corr > 0 else 'negative'} "
                     f"correlation ({corr:+.2f}) between how long you sleep and your "
                     "HRV the following morning. "
-                    f"{'More sleep tends to mean better recovery.' if corr > 0 else 'Something is affecting both sleep and recovery — worth investigating.'}"
+                    f"{'More sleep tends to mean better recovery.' if corr > 0 else 'Something is affecting both sleep and recovery - worth investigating.'}"
                 ),
                 "icon": "🔗",
                 "kind": "positive" if corr > 0 else "neutral",
@@ -817,7 +817,7 @@ def generate_insights(
                 "body": (
                     f"You logged {recent_7} workout{'s' if recent_7 != 1 else ''} this week, "
                     f"down from {prev_7} the previous week. "
-                    "If this is intentional recovery, great — otherwise consider what's getting in the way."
+                    "If this is intentional recovery, great - otherwise consider what's getting in the way."
                 ),
                 "icon": "🏋️",
                 "kind": "neutral",
@@ -836,7 +836,7 @@ def generate_insights(
                     "body": (
                         f"Your resting HR on days after a workout ({post:.0f} bpm) is "
                         f"{delta:.0f} bpm higher than on rest days ({rest:.0f} bpm). "
-                        "This is normal — your heart is working harder to repair and adapt. "
+                        "This is normal - your heart is working harder to repair and adapt. "
                         "Watch that the elevation returns to baseline within 24-48 hours."
                     ),
                     "icon": "🔥",
@@ -848,7 +848,7 @@ def generate_insights(
                     "body": (
                         f"Your resting HR on days after a workout ({post:.0f} bpm) is "
                         f"{abs(delta):.0f} bpm *lower* than on rest days ({rest:.0f} bpm). "
-                        "This indicates excellent aerobic adaptation — your cardiovascular system "
+                        "This indicates excellent aerobic adaptation - your cardiovascular system "
                         "recovers efficiently from training stress."
                     ),
                     "icon": "🌟",
@@ -920,7 +920,7 @@ def generate_insights(
                     "body": (
                         f"Your active calorie burn this week ({recent_kcal:.0f} kcal/day) is "
                         f"{pct:.0f}% above your 30-day average ({older_kcal:.0f} kcal/day). "
-                        "More active days mean more energy expenditure — keep it up!"
+                        "More active days mean more energy expenditure - keep it up!"
                     ),
                     "icon": "🔥",
                     "kind": "positive",
@@ -948,7 +948,7 @@ def generate_insights(
                 "title": "Excellent restorative sleep 🌙",
                 "body": (
                     f"On average {avg_rest_pct:.0f}% of your sleep ({avg_rest_h:.1f}h) "
-                    "is Deep or REM sleep — above the typical 20-25% range. "
+                    "is Deep or REM sleep - above the typical 20-25% range. "
                     "Restorative sleep is when your brain consolidates memories "
                     "and your body repairs tissue."
                 ),
@@ -960,7 +960,7 @@ def generate_insights(
                 "title": "Low restorative sleep ⚠️",
                 "body": (
                     f"Only {avg_rest_pct:.0f}% of your sleep ({avg_rest_h:.1f}h) "
-                    "is Deep or REM — below the recommended 20%. "
+                    "is Deep or REM - below the recommended 20%. "
                     "Reducing alcohol, maintaining a consistent bedtime and avoiding screens "
                     "can increase restorative sleep stages."
                 ),
@@ -1014,7 +1014,7 @@ def generate_insights(
                     "title": "VO₂ max improving 📈",
                     "body": (
                         f"Your estimated VO₂ max has risen by {delta_vo2:.1f} mL/kg/min "
-                        f"recently (latest: {latest_vo2:.1f} — {classification}). "
+                        f"recently (latest: {latest_vo2:.1f} - {classification}). "
                         "This is the single best predictor of long-term cardiovascular health."
                     ),
                     "icon": "🫁",
@@ -1025,7 +1025,7 @@ def generate_insights(
                     "title": "VO₂ max declining",
                     "body": (
                         f"Your estimated VO₂ max has dropped by {abs(delta_vo2):.1f} mL/kg/min "
-                        f"recently (latest: {latest_vo2:.1f} — {classification}). "
+                        f"recently (latest: {latest_vo2:.1f} - {classification}). "
                         "Aerobic training such as running, cycling or swimming "
                         "can reverse this trend."
                     ),
@@ -1038,7 +1038,7 @@ def generate_insights(
                 "body": (
                     f"Your current estimated VO₂ max is {latest_vo2:.1f} mL/kg/min "
                     f"({classification}). "
-                    "Regular cardio training — especially zone-2 sessions — "
+                    "Regular cardio training - especially zone-2 sessions - "
                     "is the most effective way to raise this number over time."
                 ),
                 "icon": "🫁",
@@ -1053,7 +1053,7 @@ def generate_insights(
             insights.append({
                 "title": "Strong HRV baseline 💚",
                 "body": (
-                    f"Your recent average HRV is {avg_hrv:.0f} ms — above 60 ms, "
+                    f"Your recent average HRV is {avg_hrv:.0f} ms - above 60 ms, "
                     "which is associated with robust autonomic nervous system balance "
                     "and good aerobic fitness."
                 ),
@@ -1064,7 +1064,7 @@ def generate_insights(
             insights.append({
                 "title": "HRV below typical range",
                 "body": (
-                    f"Your recent average HRV is {avg_hrv:.0f} ms — below 30 ms. "
+                    f"Your recent average HRV is {avg_hrv:.0f} ms - below 30 ms. "
                     "Low HRV can reflect chronic stress, insufficient sleep "
                     "or low aerobic fitness. "
                     "Sleep, stress management and consistent aerobic exercise are "
@@ -1085,7 +1085,7 @@ def generate_insights(
         top_pct = float(wdf[_wtype_col].value_counts().iloc[0] / len(wdf) * 100)
         if n_types >= 4:
             insights.append({
-                "title": f"Varied training — {n_types} different workout types 🎯",
+                "title": f"Varied training - {n_types} different workout types 🎯",
                 "body": (
                     f"You've done {n_types} distinct workout types. "
                     f"Your most frequent is {top_label} ({top_pct:.0f}% of sessions). "
@@ -1122,7 +1122,7 @@ def generate_insights(
                 "body": (
                     f"Your recent workout sessions average {recent_dur:.0f} min, "
                     f"up {delta_dur:.0f} min from your 30-day average ({older_dur:.0f} min). "
-                    "Longer sessions can build endurance — just be mindful of recovery."
+                    "Longer sessions can build endurance - just be mindful of recovery."
                 ),
                 "icon": "⏱️",
                 "kind": "positive",
@@ -1133,7 +1133,7 @@ def generate_insights(
                 "body": (
                     f"Recent workouts average {recent_dur:.0f} min vs {older_dur:.0f} min before. "
                     "If intentional (deload, taper), this is smart. "
-                    "Otherwise, shorter sessions can still be effective — quality beats quantity."
+                    "Otherwise, shorter sessions can still be effective - quality beats quantity."
                 ),
                 "icon": "⏱️",
                 "kind": "neutral",
@@ -1153,7 +1153,7 @@ def generate_insights(
                     "body": (
                         f"You average {weekday_steps:,.0f} steps on weekdays vs "
                         f"{weekend_steps:,.0f} on weekends "
-                        f"— a difference of {diff_steps:,.0f}. "
+                        f"- a difference of {diff_steps:,.0f}. "
                         "Try adding a weekend walk or outdoor activity "
                         "to balance your weekly movement."
                     ),
@@ -1223,7 +1223,7 @@ def generate_insights(
                 "title": "Blood oxygen below normal ⚠️",
                 "body": (
                     f"Your average SpO₂ over the last 7 readings is {recent_spo2:.1f}% "
-                    "— below the normal range (≥95%). "
+                    "- below the normal range (≥95%). "
                     "Persistently low blood oxygen can indicate sleep apnea or other "
                     "conditions worth discussing with a doctor."
                 ),
@@ -1247,7 +1247,7 @@ def generate_insights(
                 insights.append({
                     "title": "Excellent blood oxygen ✅",
                     "body": (
-                        f"Your average SpO₂ is {avg_spo2:.1f}% — in the excellent range. "
+                        f"Your average SpO₂ is {avg_spo2:.1f}% - in the excellent range. "
                         "Good blood oxygen reflects healthy lung and cardiovascular function."
                     ),
                     "icon": "✅",
@@ -1276,7 +1276,7 @@ def generate_insights(
             insights.append({
                 "title": "Blood pressure: elevated",
                 "body": (
-                    f"Your average systolic BP is {avg_sys:.0f} mmHg — in the Stage 1 "
+                    f"Your average systolic BP is {avg_sys:.0f} mmHg - in the Stage 1 "
                     "hypertension range (130-139). "
                     "Lifestyle changes (less sodium, more exercise, stress reduction) "
                     "can bring this down."
@@ -1289,7 +1289,7 @@ def generate_insights(
                 "title": "Blood pressure: healthy range 🟢",
                 "body": (
                     f"Your average systolic BP is {avg_sys:.0f} mmHg "
-                    "— in the healthy normal range (<120 mmHg). "
+                    "- in the healthy normal range (<120 mmHg). "
                     "Regular physical activity, a healthy diet and good sleep all "
                     "contribute to healthy blood pressure."
                 ),
@@ -1307,7 +1307,7 @@ def generate_insights(
             delta_whr = recent_whr - older_whr
             if delta_whr <= -3:
                 insights.append({
-                    "title": "Walking HR improving — aerobic fitness up 📉",
+                    "title": "Walking HR improving - aerobic fitness up 📉",
                     "body": (
                         f"Your walking heart rate has dropped by {abs(delta_whr):.0f} bpm "
                         f"recently ({recent_whr:.0f} bpm vs {older_whr:.0f} bpm). "
@@ -1351,7 +1351,7 @@ def generate_insights(
             insights.append({
                 "title": "Sleep surplus 🌟",
                 "body": (
-                    f"You're averaging {nightly_avg:.1f}h/night — "
+                    f"You're averaging {nightly_avg:.1f}h/night - "
                     f"{abs(recent_debt):.0f}h above an 8-hour goal. "
                     "Consistent quality sleep this long is excellent for recovery, "
                     "cognitive function and long-term health."
@@ -1374,7 +1374,7 @@ def generate_insights(
                     ),
                     "body": (
                         f"After {best['workout_type']} sessions your next-morning HRV "
-                        f"averages {best['avg_hrv']:.0f} ms — {diff:.0f} ms higher than "
+                        f"averages {best['avg_hrv']:.0f} ms - {diff:.0f} ms higher than "
                         f"after {worst['workout_type']} ({worst['avg_hrv']:.0f} ms). "
                         "Scheduling more of your best-recovery workouts may help you "
                         "maintain higher readiness across the week."
@@ -1398,7 +1398,7 @@ def generate_insights(
                     "body": (
                         f"You spend {z2_pct:.0f}% of your active HR time in Zone 2 "
                         "(aerobic base). "
-                        "Zone 2 training is the foundation of endurance — it builds "
+                        "Zone 2 training is the foundation of endurance - it builds "
                         "mitochondrial density and fat-burning efficiency."
                     ),
                     "icon": "🟢",
@@ -1406,7 +1406,7 @@ def generate_insights(
                 })
             elif z5_pct >= 30:
                 insights.append({
-                    "title": "Heavy Zone 5 — add more easy training 🔴",
+                    "title": "Heavy Zone 5 - add more easy training 🔴",
                     "body": (
                         f"You spend {z5_pct:.0f}% of your HR time in Zone 5 (VO₂ max). "
                         "While intense training builds speed, excessive Zone 5 without "

@@ -47,7 +47,7 @@ export.xml
 apple_health_export/
 .tmp/
 
-# Local databases (contain personal health data — never commit these).
+# Local databases (contain personal health data - never commit these).
 health.db
 health.duckdb
 *.duckdb
@@ -71,3 +71,7 @@ Desktop.ini
 *.log
 
 .env
+
+# --- JavaScript / frontend ---
+frontend/node_modules/
+frontend/dist/

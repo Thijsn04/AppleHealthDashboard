@@ -20,7 +20,7 @@ def configure_logging(log_dir: Path | None = None) -> None:
 
     root = logging.getLogger()
     if root.handlers:
-        # Avoid duplicate handlers on Streamlit reruns.
+        # Avoid duplicate handlers when the application factory is reused.
         return
 
     root.setLevel(logging.INFO)

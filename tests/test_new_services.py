@@ -140,7 +140,7 @@ class TestHeartServices:
         assert len(result) == 2
 
     def test_resting_hr_trend_falls_back_to_mean(self) -> None:
-        # No resting HR records — should fall back to mean HR
+        # No resting HR records - should fall back to mean HR
         df = _hr_df()
         result = resting_hr_trend(df)
         assert "rhr" in result.columns

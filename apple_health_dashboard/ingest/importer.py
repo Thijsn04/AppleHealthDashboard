@@ -3,12 +3,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+import duckdb
+
 from apple_health_dashboard.ingest.apple_health_activity_summary import (
     iter_activity_summaries_from_export_xml,
 )
-from apple_health_dashboard.ingest.apple_health_records import (
-    iter_records_from_export_xml,
-)
+from apple_health_dashboard.ingest.apple_health_records import iter_records_from_export_xml
 from apple_health_dashboard.ingest.apple_health_workouts import iter_workouts_from_export_xml
 from apple_health_dashboard.storage.duckdb_store import (
     init_db,
@@ -19,8 +19,14 @@ from apple_health_dashboard.storage.duckdb_store import (
     upsert_workouts,
 )
 
-# Backwards-compatible helper: imports only records (no metadata, no workouts).
-# Kept for earlier callers, but the app uses import_export_xml_to_duckdb_all.
+_COUNTED_TABLES = (
+    "health_record",
+    "record_metadata",
+    "activity_summary",
+    "workout",
+    "workout_metadata",
+)
+
 
 def import_export_xml_to_duckdb(
     export_xml_path: Path,
@@ -29,49 +35,14 @@ def import_export_xml_to_duckdb(
     batch_size: int = 2000,
     on_progress: Callable[[int], None] | None = None,
 ) -> int:
-    processed = 0
-    inserted_total = 0
-
-    con = open_db(db_path)
-    try:
-        init_db(con)
-
-        batch: list = []
-        for rec, _meta in iter_records_from_export_xml(export_xml_path):
-            # Convert to legacy HealthRecord shape by reusing existing DuckDB writer.
-            # (We keep the storage layer stable by continuing to write HealthRecord rows.)
-            from apple_health_dashboard.ingest.apple_health import HealthRecord
-
-            batch.append(
-                HealthRecord(
-                    type=rec.record_type,
-                    start_at=rec.start_at,
-                    end_at=rec.end_at,
-                    creation_at=rec.creation_at,
-                    source_name=rec.source_name,
-                    unit=rec.unit,
-                    value=rec.value,
-                    value_str=rec.value_str,
-                )
-            )
-            processed += 1
-
-            if on_progress and processed % 250 == 0:
-                on_progress(processed)
-
-            if len(batch) >= batch_size:
-                inserted_total += upsert_records(con, batch)
-                batch.clear()
-
-        if batch:
-            inserted_total += upsert_records(con, batch)
-
-        if on_progress:
-            on_progress(processed)
-
-        return inserted_total
-    finally:
-        con.close()
+    """Import records atomically and return the number of newly stored records."""
+    counters = import_export_xml_to_duckdb_all(
+        export_xml_path,
+        db_path,
+        record_batch_size=batch_size,
+        on_progress=lambda _stage, processed: on_progress(processed) if on_progress else None,
+    )
+    return counters["records_inserted"]
 
 
 def import_export_xml_to_duckdb_all(
@@ -82,117 +53,128 @@ def import_export_xml_to_duckdb_all(
     workout_batch_size: int = 300,
     on_progress: Callable[[str, int], None] | None = None,
 ) -> dict[str, int]:
-    """Import Records (+metadata) + Workouts (+metadata) + ActivitySummary into DuckDB."""
+    """Import records, metadata, workouts, and activity summaries in one transaction.
 
+    Returned counts represent rows actually added during this import. Re-importing an
+    unchanged export therefore reports zero newly inserted rows.
+    """
     con = open_db(db_path)
     try:
         init_db(con)
+        counts_before = _table_counts(con)
+        con.execute("BEGIN TRANSACTION")
+        try:
+            _import_records(con, export_xml_path, record_batch_size, on_progress)
+            _import_activity_summaries(con, export_xml_path)
+            _import_workouts(con, export_xml_path, workout_batch_size, on_progress)
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
 
-        # Records (+ metadata)
-        from apple_health_dashboard.ingest.apple_health import HealthRecord
-
-        records_processed = 0
-        records_inserted = 0
-        record_metadata_inserted = 0
-
-        record_batch: list[HealthRecord] = []
-        record_meta_rows: list[tuple[str, str, str]] = []
-
-        for rec, meta in iter_records_from_export_xml(export_xml_path):
-            record_batch.append(
-                HealthRecord(
-                    type=rec.record_type,
-                    start_at=rec.start_at,
-                    end_at=rec.end_at,
-                    creation_at=rec.creation_at,
-                    source_name=rec.source_name,
-                    unit=rec.unit,
-                    value=rec.value,
-                    value_str=rec.value_str,
-                )
-            )
-            record_meta_rows.extend([(m.record_hash, m.key, m.value) for m in meta])
-
-            records_processed += 1
-            if on_progress and records_processed % 500 == 0:
-                on_progress("records", records_processed)
-
-            if len(record_batch) >= record_batch_size:
-                records_inserted += upsert_records(con, record_batch)
-                record_metadata_inserted += upsert_record_metadata(con, record_meta_rows)
-                record_batch.clear()
-                record_meta_rows.clear()
-
-        if record_batch or record_meta_rows:
-            records_inserted += upsert_records(con, record_batch)
-            record_metadata_inserted += upsert_record_metadata(con, record_meta_rows)
-
-        if on_progress:
-            on_progress("records", records_processed)
-
-        # ActivitySummary (rings)
-        activity_processed = 0
-        activity_inserted = 0
-        activity_rows = []
-
-        for s in iter_activity_summaries_from_export_xml(export_xml_path):
-            activity_rows.append(
-                (
-                    s.day.isoformat(),
-                    s.active_energy_burned_kcal,
-                    s.active_energy_burned_goal_kcal,
-                    s.apple_exercise_time_min,
-                    s.apple_exercise_time_goal_min,
-                    s.apple_stand_hours,
-                    s.apple_stand_hours_goal,
-                )
-            )
-            activity_processed += 1
-
-            if len(activity_rows) >= 365:
-                activity_inserted += upsert_activity_summaries(con, activity_rows)
-                activity_rows.clear()
-
-        if activity_rows:
-            activity_inserted += upsert_activity_summaries(con, activity_rows)
-
-        # Workouts (+ metadata)
-        workouts_processed = 0
-        workouts_inserted_total = 0
-        workout_meta_inserted_total = 0
-
-        workout_batch = []
-        meta_batch = []
-
-        for workout, metadata in iter_workouts_from_export_xml(export_xml_path):
-            workout_batch.append(workout)
-            meta_batch.extend(metadata)
-            workouts_processed += 1
-
-            if on_progress and workouts_processed % 50 == 0:
-                on_progress("workouts", workouts_processed)
-
-            if len(workout_batch) >= workout_batch_size:
-                w_i, m_i = upsert_workouts(con, workout_batch, meta_batch)
-                workouts_inserted_total += w_i
-                workout_meta_inserted_total += m_i
-                workout_batch.clear()
-                meta_batch.clear()
-
-        if workout_batch or meta_batch:
-            w_i, m_i = upsert_workouts(con, workout_batch, meta_batch)
-            workouts_inserted_total += w_i
-            workout_meta_inserted_total += m_i
-
-        if on_progress:
-            on_progress("workouts", workouts_processed)
-
+        counts_after = _table_counts(con)
         return {
-            "records_inserted": records_inserted,
-            "record_metadata_inserted": record_metadata_inserted,
-            "activity_summaries_inserted": activity_inserted,
-            "workouts_inserted": workouts_inserted_total,
-            "workout_metadata_inserted": workout_meta_inserted_total,
+            "records_inserted": counts_after["health_record"] - counts_before["health_record"],
+            "record_metadata_inserted": counts_after["record_metadata"] - counts_before["record_metadata"],
+            "activity_summaries_inserted": counts_after["activity_summary"] - counts_before["activity_summary"],
+            "workouts_inserted": counts_after["workout"] - counts_before["workout"],
+            "workout_metadata_inserted": counts_after["workout_metadata"] - counts_before["workout_metadata"],
         }
     finally:
         con.close()
+
+
+def _import_records(
+    con: duckdb.DuckDBPyConnection,
+    export_xml_path: Path,
+    batch_size: int,
+    on_progress: Callable[[str, int], None] | None,
+) -> None:
+    from apple_health_dashboard.ingest.apple_health import HealthRecord
+
+    processed = 0
+    records: list[HealthRecord] = []
+    metadata_rows: list[tuple[str, str, str]] = []
+    for record, metadata in iter_records_from_export_xml(export_xml_path):
+        records.append(
+            HealthRecord(
+                type=record.record_type,
+                start_at=record.start_at,
+                end_at=record.end_at,
+                creation_at=record.creation_at,
+                source_name=record.source_name,
+                unit=record.unit,
+                value=record.value,
+                value_str=record.value_str,
+            )
+        )
+        metadata_rows.extend((item.record_hash, item.key, item.value) for item in metadata)
+        processed += 1
+        if on_progress and processed % 500 == 0:
+            on_progress("records", processed)
+        if len(records) >= batch_size:
+            upsert_records(con, records)
+            upsert_record_metadata(con, metadata_rows)
+            records.clear()
+            metadata_rows.clear()
+
+    if records or metadata_rows:
+        upsert_records(con, records)
+        upsert_record_metadata(con, metadata_rows)
+    if on_progress:
+        on_progress("records", processed)
+
+
+def _import_activity_summaries(con: duckdb.DuckDBPyConnection, export_xml_path: Path) -> None:
+    rows = []
+    for summary in iter_activity_summaries_from_export_xml(export_xml_path):
+        rows.append(
+            (
+                summary.day.isoformat(),
+                summary.active_energy_burned_kcal,
+                summary.active_energy_burned_goal_kcal,
+                summary.apple_exercise_time_min,
+                summary.apple_exercise_time_goal_min,
+                summary.apple_stand_hours,
+                summary.apple_stand_hours_goal,
+            )
+        )
+        if len(rows) >= 365:
+            upsert_activity_summaries(con, rows)
+            rows.clear()
+    if rows:
+        upsert_activity_summaries(con, rows)
+
+
+def _import_workouts(
+    con: duckdb.DuckDBPyConnection,
+    export_xml_path: Path,
+    batch_size: int,
+    on_progress: Callable[[str, int], None] | None,
+) -> None:
+    processed = 0
+    workouts = []
+    metadata_rows = []
+    for workout, metadata in iter_workouts_from_export_xml(export_xml_path):
+        workouts.append(workout)
+        metadata_rows.extend(metadata)
+        processed += 1
+        if on_progress and processed % 50 == 0:
+            on_progress("workouts", processed)
+        if len(workouts) >= batch_size:
+            upsert_workouts(con, workouts, metadata_rows)
+            workouts.clear()
+            metadata_rows.clear()
+
+    if workouts or metadata_rows:
+        upsert_workouts(con, workouts, metadata_rows)
+    if on_progress:
+        on_progress("workouts", processed)
+
+
+def _table_counts(con: duckdb.DuckDBPyConnection) -> dict[str, int]:
+    """Return table cardinalities for accurate import deltas."""
+    return {
+        table: int(con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        for table in _COUNTED_TABLES
+    }
