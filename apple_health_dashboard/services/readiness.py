@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+import pandas as pd
+
 
 def calculate_readiness_score(
     df_records: pd.DataFrame, 
@@ -111,7 +111,10 @@ def calculate_readiness_score(
     }
 
 def _get_readiness_label(score: float) -> str:
-    if score >= 85: return "Optimal"
-    if score >= 70: return "Good"
-    if score >= 50: return "Fair"
+    if score >= 85:
+        return "Optimal"
+    if score >= 70:
+        return "Good"
+    if score >= 50:
+        return "Fair"
     return "Pay Attention"

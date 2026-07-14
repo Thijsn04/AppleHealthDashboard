@@ -1,29 +1,33 @@
 from __future__ import annotations
 
 from datetime import datetime
+
+import altair as alt
 import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
-from apple_health_dashboard.services.filters import apply_date_filter
 from apple_health_dashboard.services.body import body_summary_stats, weight_trend
+from apple_health_dashboard.services.filters import apply_date_filter
 from apple_health_dashboard.services.heart import heart_summary_stats, resting_hr_trend
-from apple_health_dashboard.services.sleep import sleep_consistency_stats, sleep_duration_by_day, sleep_records
 from apple_health_dashboard.services.insights import generate_insights
-from apple_health_dashboard.services.stats import summarize_by_day_agg
-from apple_health_dashboard.services.streaks import daily_streak, personal_bests
-from apple_health_dashboard.web.charts import area_chart, line_chart
 from apple_health_dashboard.services.readiness import calculate_readiness_score
-from apple_health_dashboard.services.stats import detect_outliers_zscore
+from apple_health_dashboard.services.sleep import (
+    sleep_consistency_stats,
+    sleep_duration_by_day,
+    sleep_records,
+)
+from apple_health_dashboard.services.stats import detect_outliers_zscore, summarize_by_day_agg
+from apple_health_dashboard.services.streaks import daily_streak, personal_bests
 from apple_health_dashboard.storage.notes_store import load_notes, save_note
+from apple_health_dashboard.web.charts import area_chart, line_chart
 from apple_health_dashboard.web.page_utils import (
     inject_global_css,
-    sidebar_nav,
     load_all_activity_summaries,
     load_all_records,
     load_all_workouts,
-    page_header,
     sidebar_date_filter,
+    sidebar_nav,
 )
 
 st.set_page_config(
@@ -243,7 +247,7 @@ _KIND_BORDER = {
 }
 _top_insights = _insights[:3]
 _cols = st.columns(len(_top_insights))
-for _col, _ins in zip(_cols, _top_insights):
+for _col, _ins in zip(_cols, _top_insights, strict=False):
     _bg = _KIND_BG.get(_ins.get("kind", "info"), _KIND_BG["info"])
     _border = _KIND_BORDER.get(_ins.get("kind", "info"), _KIND_BORDER["info"])
     _col.markdown(
@@ -280,7 +284,8 @@ with tab_daily:
         st.markdown("#### Sleep Duration")
         if not srec.empty:
             sleep_dur = sleep_duration_by_day(srec, stages="actual")
-            if sleep_dur.empty: sleep_dur = sleep_duration_by_day(srec)
+            if sleep_dur.empty:
+                sleep_dur = sleep_duration_by_day(srec)
             if not sleep_dur.empty:
                 st.altair_chart(
                     area_chart(sleep_dur, x="day", y="hours", y_title="Hours", color="#4A90D9", height=200),
@@ -346,7 +351,8 @@ with st.sidebar:
 
 # Helper to add annotations to Altair chart
 def add_annotations(base_chart, notes):
-    if notes.empty: return base_chart
+    if notes.empty:
+        return base_chart
     notes_df = notes.copy()
     notes_df["y"] = 0
     rules = alt.Chart(notes_df).mark_rule(color="red", strokeDash=[4,4]).encode(x="date:T")

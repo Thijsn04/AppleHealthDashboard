@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import altair as alt
+import numpy as np
+import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
 from apple_health_dashboard.services.filters import apply_date_filter
 from apple_health_dashboard.services.heart import (
-    HR_ZONES,
+    DIASTOLIC_TYPE,
+    HEART_RATE_TYPE,
+    HRV_TYPE,
+    RESTING_HR_TYPE,
+    SPO2_TYPE,
+    SYSTOLIC_TYPE,
+    VO2MAX_TYPE,
     blood_pressure_trend,
+    classify_vo2max,
     heart_summary_stats,
     hr_daily_stats,
     hr_zone_distribution,
@@ -14,17 +24,8 @@ from apple_health_dashboard.services.heart import (
     resting_hr_trend,
     spo2_trend,
     vo2max_trend,
-    classify_vo2max,
-    HEART_RATE_TYPE,
-    RESTING_HR_TYPE,
-    HRV_TYPE,
-    VO2MAX_TYPE,
-    SYSTOLIC_TYPE,
-    DIASTOLIC_TYPE,
-    SPO2_TYPE,
 )
-from apple_health_dashboard.services.streaks import daily_streak, longest_streak
-from apple_health_dashboard.web.charts import area_chart, bar_chart, donut_chart, line_chart
+from apple_health_dashboard.web.charts import area_chart, donut_chart, line_chart
 from apple_health_dashboard.web.page_utils import (
     load_all_records,
     page_header,
@@ -351,7 +352,6 @@ with tabs[5]:
         st.markdown("### Waveform Simulation")
         st.caption("Note: Raw waveform data is often contained in separate XML files in the export. Below is a representative heartbeat visualization.")
         
-        import numpy as np
         t = np.linspace(0, 1, 500)
         # Simple simulated ECG-like pulse
         pulse = np.exp(-100 * (t - 0.2)**2) * 0.8 + \

@@ -3,6 +3,7 @@ from __future__ import annotations
 import altair as alt
 import pandas as pd
 
+
 def calendar_heatmap(df: pd.DataFrame, date_col: str, value_col: str, title: str = "", color_scheme: str = "greens"):
     """
     Creates a GitHub-style calendar heatmap.

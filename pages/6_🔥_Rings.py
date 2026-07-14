@@ -4,8 +4,9 @@ import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
+from apple_health_dashboard.services.filters import DateFilter, infer_date_filter
 from apple_health_dashboard.services.streaks import ring_streak
-from apple_health_dashboard.web.charts import area_chart, bar_chart, line_chart
+from apple_health_dashboard.web.charts import area_chart
 from apple_health_dashboard.web.page_utils import (
     load_all_activity_summaries,
     page_header,
@@ -37,8 +38,6 @@ if adf.empty:
 # Build proxy df for date filter
 proxy_df = adf.rename(columns={"day": "start_at"})[["start_at"]].copy()
 proxy_df["type"] = "ring"
-
-from apple_health_dashboard.services.filters import infer_date_filter, DateFilter
 
 with st.sidebar:
     sidebar_nav(current="Rings")
@@ -280,19 +279,6 @@ with tabs[2]:
         st.altair_chart(heat, width="stretch")
     else:
         st.info("No ring data available for a calendar view.")
-
-        # Bar charts for each ring
-        ring_monthly = [
-            ("Avg Move (kcal)", "#FF6B6B"),
-            ("Avg Exercise (min)", "#10B981"),
-            ("Avg Stand (h)", "#3B82F6"),
-        ]
-        for col, color in ring_monthly:
-            if col in monthly.columns:
-                st.altair_chart(
-                    bar_chart(monthly, x="Month", y=col, y_title=col, color=color, height=180),
-                    width="stretch",
-                )
 
 # ── Raw Data tab ───────────────────────────────────────────────────────────────
 with tabs[3]:

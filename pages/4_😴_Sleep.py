@@ -7,20 +7,19 @@ from apple_health_dashboard.db import default_db_path
 from apple_health_dashboard.services.filters import apply_date_filter
 from apple_health_dashboard.services.sleep import (
     SLEEP_RECORD_TYPE,
+    SLEEP_STAGES,
     sleep_consistency_stats,
     sleep_duration_by_day,
     sleep_records,
     sleep_stages_by_day,
     sleep_value_counts,
-    SLEEP_STAGES,
-    SLEEP_STAGES_ACTUAL,
 )
-from apple_health_dashboard.web.charts import area_chart, bar_chart, stacked_bar_chart
+from apple_health_dashboard.web.charts import stacked_bar_chart
 from apple_health_dashboard.web.page_utils import (
-    sidebar_nav,
     load_all_records,
     page_header,
     sidebar_date_filter,
+    sidebar_nav,
 )
 
 st.set_page_config(
@@ -209,8 +208,8 @@ with tabs[2]:
     st.subheader("Sleep Consistency")
     st.caption("Regular sleep timing is as important as duration.")
 
+
     from apple_health_dashboard.services.sleep import sleep_timing_consistency
-    import numpy as np
     timing_stats = sleep_timing_consistency(srec)
     if timing_stats:
         st.markdown("**Timing Consistency**")
@@ -218,7 +217,8 @@ with tabs[2]:
         c1.metric("Consistency Score", f"{timing_stats['consistency_score']:.0f}/100", help="Based on bedtime/waketime variance. 100 = perfect consistency.")
         
         def fmt_time(h):
-            if pd.isna(h): return "—"
+            if pd.isna(h):
+                return "—"
             h = h % 24
             hr = int(h)
             mn = int((h - hr) * 60)
@@ -364,8 +364,10 @@ with tabs[4]:
         c_t1, c_t2, c_t3, c_t4 = st.columns(4)
         c_t1.metric("Consistency score", f"{timing['consistency_score']:.0f}/100")
         def _fmt_h(h):
-            if h is None: return "—"
-            h = h % 24; return f"{int(h):02d}:{int((h % 1)*60):02d}"
+            if h is None:
+                return "—"
+            h = h % 24
+            return f"{int(h):02d}:{int((h % 1)*60):02d}"
         c_t2.metric("Avg bedtime", _fmt_h(timing.get("avg_bedtime")))
         c_t3.metric("Avg wake time", _fmt_h(timing.get("avg_waketime")))
         c_t4.metric("Bedtime variance", f"±{timing.get('bedtime_variance_h', 0)*60:.0f} min")

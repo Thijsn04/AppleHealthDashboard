@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
 
 NOTES_FILE = Path("health_notes.csv")
 

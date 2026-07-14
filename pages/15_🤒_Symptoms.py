@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import pandas as pd
-import streamlit as st
 import altair as alt
+import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
 from apple_health_dashboard.services.filters import apply_date_filter

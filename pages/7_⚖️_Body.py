@@ -4,9 +4,6 @@ import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
-
-# Default target weight shown in the goal calculator when no current weight is available
-_DEFAULT_TARGET_WEIGHT_KG = 70.0
 from apple_health_dashboard.services.body import (
     bmi_category,
     bmi_trend,
@@ -16,15 +13,18 @@ from apple_health_dashboard.services.body import (
     weight_trend,
 )
 from apple_health_dashboard.services.filters import apply_date_filter
-from apple_health_dashboard.web.charts import area_chart, line_chart, scatter_chart
 from apple_health_dashboard.services.forecasting import forecast_metric, predict_goal_date
 from apple_health_dashboard.web.body_map import render_body_map
+from apple_health_dashboard.web.charts import area_chart, scatter_chart
 from apple_health_dashboard.web.page_utils import (
     load_all_records,
     page_header,
     sidebar_date_filter,
     sidebar_nav,
 )
+
+# Default target weight shown in the goal calculator when no current weight is available
+_DEFAULT_TARGET_WEIGHT_KG = 70.0
 
 st.set_page_config(
     page_title="Body · Apple Health Dashboard",
@@ -178,7 +178,7 @@ with tabs[1]:
 
     if b_trend.empty:
         # Try to compute from weight if we have height
-        from apple_health_dashboard.services.body import HEIGHT_TYPE, WEIGHT_TYPE
+        from apple_health_dashboard.services.body import HEIGHT_TYPE
         height_df = df_f[df_f["type"] == HEIGHT_TYPE].copy()
         if not height_df.empty and not w_trend.empty:
             latest_height_m = height_df["value"].dropna().iloc[-1]

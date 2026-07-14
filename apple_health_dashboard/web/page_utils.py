@@ -8,9 +8,6 @@ import streamlit as st
 from apple_health_dashboard.services.filters import DateFilter, infer_date_filter
 from apple_health_dashboard.storage.duckdb_store import (
     init_db,
-    iter_activity_summaries,
-    iter_records,
-    iter_workouts,
     open_db,
 )
 
@@ -415,7 +412,7 @@ def page_footer(db_path: Path | None = None) -> None:
         size_mb = db_path.stat().st_size / 1_048_576
         parts.append(f"DB: {db_path.name} ({size_mb:.1f} MB)")
     st.markdown(
-        f'<div class="ahd-footer">' + " &middot; ".join(parts) + "</div>",
+        '<div class="ahd-footer">' + " &middot; ".join(parts) + "</div>",
         unsafe_allow_html=True,
     )
 
@@ -493,7 +490,7 @@ def sidebar_date_filter(df: pd.DataFrame, current: str | None = None) -> DateFil
         return preset_filter
 
 
-def setup_page_nav(current: str, df: pd.DataFrame | None = None) -> "DateFilter | None":
+def setup_page_nav(current: str, df: pd.DataFrame | None = None) -> DateFilter | None:
     """One-call sidebar setup: inject CSS, render nav, optionally add date filter.
 
     Call right after st.set_page_config().  If *df* is supplied the date filter

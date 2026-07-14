@@ -46,7 +46,13 @@ export.zip
 export.xml
 apple_health_export/
 .tmp/
+
+# Local databases (contain personal health data — never commit these).
 health.db
+health.duckdb
+*.duckdb
+*.sqlite
+*.sqlite3
 
 # Local logs
 app.log

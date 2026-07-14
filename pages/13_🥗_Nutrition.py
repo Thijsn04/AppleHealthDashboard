@@ -40,7 +40,8 @@ df_f = apply_date_filter(df, date_filter)
 
 def get_daily_sum(df, record_type):
     sub = df[df["type"] == record_type].copy()
-    if sub.empty: return pd.DataFrame()
+    if sub.empty:
+        return pd.DataFrame()
     sub["value"] = pd.to_numeric(sub["value"], errors="coerce")
     sub["day"] = sub["start_at"].dt.floor("D")
     return sub.groupby("day")["value"].sum().reset_index()

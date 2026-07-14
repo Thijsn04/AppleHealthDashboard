@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Upload and explore Apple Health export data with a local dashboard."
 readme = "README.md"
 requires-python = ">=3.11"
-authors = [{ name = "Your Name" }]
+authors = [{ name = "Thijs Nannings" }]
 dependencies = [
   "streamlit>=1.31",
   "pandas>=2.1",
@@ -29,6 +29,10 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+# E501 (line-too-long) is not enforced: the Streamlit pages contain long inline
+# HTML/CSS f-strings where wrapping hurts readability more than it helps. All
+# correctness rules (F, B, E7…) and import hygiene (I) stay enabled.
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"

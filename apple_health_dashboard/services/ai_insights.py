@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
-import pandas as pd
+
 import google.generativeai as genai
+import pandas as pd
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,7 +18,7 @@ def generate_weekly_summary(df: pd.DataFrame, adf: pd.DataFrame, wdf: pd.DataFra
 
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel(os.getenv("GEMINI_MODEL", "gemini-1.5-flash"))
 
         # Prepare context
         # 1. Recent Stats

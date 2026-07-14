@@ -2,10 +2,11 @@
 
 # 📊 Apple Health Dashboard
 
-**A privacy-first, 100% local dashboard for your entire Apple Health export**
+**A privacy-first, local-by-default dashboard for your entire Apple Health export**
 
-Explore **all** your Apple Health data — from sleep stages and heart rate variability to VO₂ max, workout personal records and body composition trends. Nothing ever leaves your machine.
+Explore **all** your Apple Health data — from sleep stages and heart rate variability to VO₂ max, workout personal records and body composition trends. Parsing, storage and analytics run entirely on your machine. The only exception is the **optional AI features** (Health Chat & AI Insights), which you must explicitly enable with your own API key — see [Privacy](#privacy-local-by-default).
 
+[![CI](https://github.com/Thijsn04/AppleHealthDashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/Thijsn04/AppleHealthDashboard/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B.svg?logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![DuckDB](https://img.shields.io/badge/DuckDB-FFF000.svg?logo=duckdb&logoColor=black)](https://duckdb.org/)
@@ -37,13 +38,21 @@ Explore **all** your Apple Health data — from sleep stages and heart rate vari
 | ⚖️ **Body** | Weight trend, BMI classification, body fat %, lean mass, goal calculator |
 | 🔬 **Explorer** | Browse & filter every one of 50+ record types with paginated raw data and auto-generated daily charts |
 | 💡 **Insights** | Cross-metric analysis — daily readiness score, sleep/HRV correlations, circadian profile, correlation matrix |
+| 📈 **Trends** | Year-over-year overlays and month-over-month change summaries across your longest-running metrics |
+| 🥗 **Nutrition** | Dietary energy, macronutrients and hydration tracking (when logged) |
+| 🚶 **Mobility** | Walking steadiness, asymmetry and speed analytics |
+| 🤒 **Symptoms** | Logged symptoms such as headaches and fever over time |
+| 🤖 **Health Chat** | *(Optional)* Ask questions about your data in natural language via an AI model — requires your own API key |
+| ⚙️ **Settings** | Import, refresh and delete your local database |
 
-## Privacy (100% local)
+## Privacy (local by default)
 
-- Your data is **never** uploaded anywhere.
-- Uploads are stored temporarily in `./.tmp/`.
-- Data is imported into a local DuckDB database: `./health.duckdb`.
-- Both are listed in `.gitignore`.
+- Parsing, storage and every chart run **entirely on your machine** — no telemetry, no accounts, no cloud.
+- Uploads are stored temporarily in `./.tmp/`; data is imported into a local DuckDB database (`./health.duckdb`).
+- Your export, the temp folder and all local databases (`*.duckdb`, `*.db`, `*.sqlite`) are listed in `.gitignore` so they can't be committed by accident.
+
+> [!IMPORTANT]
+> **The only features that send data off your machine are the optional AI features** — the 🤖 **Health Chat** page and the AI summaries on the Insights page. They are **disabled unless you provide your own `GEMINI_API_KEY`**, and when used they send the relevant slice of your health data to Google's Gemini API. If you want a strictly offline setup, simply don't configure a key and these features stay off.
 
 ## Requirements
 
@@ -74,14 +83,25 @@ python -m streamlit run app.py
 ```
 
 Then:
-1. Upload `export.zip` or `export.xml` in the **Home** page sidebar
-2. Click **Import →** (may take 1–5 minutes for large exports)
+1. Open the **⚙️ Settings** page from the sidebar
+2. Upload `export.zip` or `export.xml` and click **Import** (may take 1–5 minutes for large exports)
 3. Navigate to any page from the sidebar
+
+### Optional: enable AI features
+
+The 🤖 **Health Chat** page and the AI summaries on the Insights page are **off by default**. To turn them on, provide a [Google AI Studio](https://aistudio.google.com/) key:
+
+```bash
+cp .env.template .env
+# then edit .env and set GEMINI_API_KEY=your_key
+```
+
+When enabled, these features send the relevant slice of your health data to Google's Gemini API. Leave the key unset to keep the app fully offline.
 
 ## Project layout
 
 ```
-app.py                          — Home / import page (Streamlit entry point)
+app.py                          — Home dashboard (Streamlit entry point)
 main.py                         — CLI helper (quick parse smoke-test)
 pages/
   1_📊_Overview.py              — Key metrics summary
@@ -93,6 +113,12 @@ pages/
   7_⚖️_Body.py                  — Body metrics
   8_🔬_Explorer.py              — Raw data explorer
   9_💡_Insights.py              — Cross-metric insights & correlations
+  10_⚙️_Settings.py             — Import, refresh & delete local data
+  11_📈_Trends.py               — Year-over-year & month-over-month trends
+  12_🤖_Health_Chat.py          — Optional AI chat over your data
+  13_🥗_Nutrition.py            — Nutrition & hydration
+  14_🚶_Mobility.py             — Walking steadiness & gait
+  15_🤒_Symptoms.py             — Logged symptoms
 apple_health_dashboard/
   db.py                         — Default database path helper
   local_data.py                 — Local data cleanup utilities
@@ -102,9 +128,10 @@ apple_health_dashboard/
     apple_health_records.py     — Streaming record parser
     apple_health_workouts.py    — Streaming workout parser
     apple_health_activity_summary.py — Activity summary (rings) parser
-    importer.py                 — Orchestrates full import into SQLite
+    importer.py                 — Orchestrates full import into DuckDB
   storage/
-    sqlite_store.py             — SQLite schema, read helpers & upsert writers
+    duckdb_store.py             — DuckDB schema, read helpers & upsert writers
+    notes_store.py              — User annotations store
   services/
     metrics.py                  — 50+ MetricSpec definitions with labels & units
     heart.py                    — HR, HRV, VO₂ max, BP, SpO₂ aggregations
@@ -113,13 +140,19 @@ apple_health_dashboard/
     activity_summary.py         — Activity ring aggregations
     workouts.py                 — Workout aggregations & personal records
     streaks.py                  — Streaks & personal-best helpers
-    insights.py                 — Cross-metric analysis & readiness score
+    insights.py                 — Cross-metric analysis & correlations
+    readiness.py                — Daily readiness score
+    forecasting.py              — Trend forecasting & goal-date prediction
+    ai_insights.py              — Optional AI summaries (Gemini)
+    weather.py                  — Weather enrichment helpers
     stats.py                    — Low-level record-to-DataFrame helpers
     filters.py                  — Date filtering utilities
     records_view.py             — Record view helpers for Explorer
     units.py                    — Unit conversion helpers
   web/
     charts.py                   — Altair chart builders (area, line, bar, etc.)
+    heatmaps.py                 — Calendar & weekly heatmap builders
+    body_map.py                 — Interactive body-map visual
     page_utils.py               — Shared sidebar, date filter & data loading
     ui.py                       — Base UI helpers (cards, branding)
     explore.py                  — Explorer page helpers

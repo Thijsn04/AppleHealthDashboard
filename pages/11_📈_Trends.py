@@ -5,7 +5,6 @@ import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
-from apple_health_dashboard.services.filters import DateFilter
 from apple_health_dashboard.services.forecasting import forecast_metric
 from apple_health_dashboard.web.page_utils import (
     load_all_records,
@@ -335,14 +334,14 @@ with tabs[6]:
         end = pd.Timestamp(period.end_time, tz="UTC")
         month_df = df[(df["start_at"] >= start) & (df["start_at"] <= end)]
 
-        def _avg(t, col="value"):
+        def _avg(t, col="value", month_df=month_df):
             sub = month_df[month_df["type"] == t]
             if sub.empty or col not in sub.columns:
                 return None
             v = pd.to_numeric(sub[col], errors="coerce").dropna()
             return round(float(v.mean()), 1) if not v.empty else None
 
-        def _sum(t, col="value"):
+        def _sum(t, col="value", month_df=month_df):
             sub = month_df[month_df["type"] == t]
             if sub.empty or col not in sub.columns:
                 return None

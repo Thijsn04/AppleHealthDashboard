@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import pandas as pd
+from datetime import datetime, timedelta
+
 import numpy as np
+import pandas as pd
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
-from datetime import timedelta
+
 
 def forecast_metric(
     df: pd.DataFrame, 

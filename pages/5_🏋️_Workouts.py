@@ -4,14 +4,14 @@ import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
-from apple_health_dashboard.services.filters import apply_date_filter
+from apple_health_dashboard.services.filters import DateFilter, infer_date_filter
 from apple_health_dashboard.services.workouts import (
     personal_records_by_type,
     summarize_by_type,
     summarize_workouts_by_week,
     workout_calendar_heatmap_data,
 )
-from apple_health_dashboard.web.charts import area_chart, bar_chart, line_chart
+from apple_health_dashboard.web.charts import area_chart, bar_chart
 from apple_health_dashboard.web.page_utils import (
     load_all_workouts,
     page_header,
@@ -40,8 +40,6 @@ if wdf.empty:
 # Build a minimal "df" just for the date filter
 _date_df = wdf[["start_at"]].rename(columns={"start_at": "start_at"})
 _date_df["type"] = "workout"
-
-from apple_health_dashboard.services.filters import infer_date_filter, DateFilter
 
 with st.sidebar:
     sidebar_nav(current="Workouts")
@@ -370,9 +368,12 @@ with tabs[5]:
     # Simple heuristic for muscle engagement
     engaged = []
     types_str = " ".join(wdf_f[label_col].astype(str).tolist()).lower()
-    if any(x in types_str for x in ["run", "walk", "cycle", "leg"]): engaged.extend(["Left Leg", "Right Leg"])
-    if any(x in types_str for x in ["strength", "pushup", "bench", "chest", "arm"]): engaged.extend(["Left Arm", "Right Arm", "Torso"])
-    if any(x in types_str for x in ["back", "row", "pull"]): engaged.append("Torso")
+    if any(x in types_str for x in ["run", "walk", "cycle", "leg"]):
+        engaged.extend(["Left Leg", "Right Leg"])
+    if any(x in types_str for x in ["strength", "pushup", "bench", "chest", "arm"]):
+        engaged.extend(["Left Arm", "Right Arm", "Torso"])
+    if any(x in types_str for x in ["back", "row", "pull"]):
+        engaged.append("Torso")
     
     render_body_map(selected_regions=list(set(engaged)))
     

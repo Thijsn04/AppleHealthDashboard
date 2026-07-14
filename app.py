@@ -1,24 +1,24 @@
 from __future__ import annotations
 
 import logging
+
 import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
 from apple_health_dashboard.logging_config import configure_logging
+from apple_health_dashboard.services.heart import heart_summary_stats
+from apple_health_dashboard.services.insights import daily_readiness_score
 from apple_health_dashboard.web.page_utils import (
     inject_global_css,
-    sidebar_nav,
+    load_all_activity_summaries,
     load_all_records,
     load_all_workouts,
-    load_all_activity_summaries,
-    ring_dots_html,
-    trend_pill,
     page_footer,
+    ring_dots_html,
+    sidebar_nav,
+    trend_pill,
 )
-from apple_health_dashboard.services.insights import daily_readiness_score
-from apple_health_dashboard.services.heart import heart_summary_stats
-from apple_health_dashboard.services.workouts import summarize_workouts_by_week
 
 logger = logging.getLogger(__name__)
 
@@ -318,7 +318,7 @@ def main() -> None:
     for i in range(0, len(nav), 3):
         row_items = nav[i: i + 3]
         cols = st.columns(len(row_items))
-        for col, (icon, name, page, desc, count_str) in zip(cols, row_items):
+        for col, (icon, name, page, desc, count_str) in zip(cols, row_items, strict=False):
             with col:
                 count_html = f'<div class="ahd-nav-card-count">{count_str}</div>' if count_str else ""
                 st.markdown(

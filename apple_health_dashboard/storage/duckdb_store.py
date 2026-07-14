@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import duckdb
+from collections.abc import Iterator
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from collections.abc import Iterator
+
+import duckdb
 
 from apple_health_dashboard.ingest.apple_health import HealthRecord
 from apple_health_dashboard.ingest.apple_health_workouts import (

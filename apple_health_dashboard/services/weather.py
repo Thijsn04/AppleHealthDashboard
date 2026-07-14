@@ -1,5 +1,6 @@
-import requests
 import pandas as pd
+import requests
+
 
 def fetch_historical_weather(lat, lon, start_date, end_date):
     """

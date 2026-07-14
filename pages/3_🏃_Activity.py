@@ -11,10 +11,10 @@ from apple_health_dashboard.services.units import normalize_units
 from apple_health_dashboard.web.charts import area_chart, line_chart
 from apple_health_dashboard.web.heatmaps import calendar_heatmap
 from apple_health_dashboard.web.page_utils import (
-    sidebar_nav,
     load_all_records,
     page_header,
     sidebar_date_filter,
+    sidebar_nav,
 )
 
 st.set_page_config(

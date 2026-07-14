@@ -3,25 +3,29 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from apple_health_dashboard.services.sleep import (
-    sleep_duration_by_day,
-    sleep_consistency_stats,
-    sleep_stages_by_day,
-    SLEEP_STAGES_ACTUAL,
-)
-from apple_health_dashboard.services.heart import (
-    hr_daily_stats,
-    resting_hr_trend,
-    hrv_trend,
-    classify_vo2max,
-    HEART_RATE_TYPE,
-    RESTING_HR_TYPE,
-    HRV_TYPE,
-)
 from apple_health_dashboard.services.body import (
-    weight_trend,
     bmi_category,
     body_summary_stats,
+    weight_trend,
+)
+from apple_health_dashboard.services.heart import (
+    HEART_RATE_TYPE,
+    RESTING_HR_TYPE,
+    classify_vo2max,
+    hr_daily_stats,
+    hrv_trend,
+    resting_hr_trend,
+)
+from apple_health_dashboard.services.metrics import (
+    METRICS,
+    metric_aggregation,
+    metric_label,
+    metrics_by_category,
+)
+from apple_health_dashboard.services.sleep import (
+    sleep_consistency_stats,
+    sleep_duration_by_day,
+    sleep_stages_by_day,
 )
 from apple_health_dashboard.services.streaks import (
     daily_streak,
@@ -29,17 +33,10 @@ from apple_health_dashboard.services.streaks import (
     personal_bests,
 )
 from apple_health_dashboard.services.workouts import (
-    workout_label,
-    summarize_by_type,
     personal_records_by_type,
+    summarize_by_type,
+    workout_label,
 )
-from apple_health_dashboard.services.metrics import (
-    metric_label,
-    metric_aggregation,
-    metrics_by_category,
-    METRICS,
-)
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 

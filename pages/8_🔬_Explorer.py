@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime
-from pathlib import Path
-
 import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
-from apple_health_dashboard.services.filters import DateFilter, infer_date_filter
 from apple_health_dashboard.services.metrics import (
     CATEGORY_EMOJI,
     METRICS,
     metric_description,
     metric_label,
-    metrics_by_category,
 )
 from apple_health_dashboard.services.stats import summarize_by_day_agg
 from apple_health_dashboard.services.units import normalize_units

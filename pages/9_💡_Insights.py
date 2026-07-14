@@ -5,10 +5,10 @@ import pandas as pd
 import streamlit as st
 
 from apple_health_dashboard.db import default_db_path
+from apple_health_dashboard.services.ai_insights import generate_weekly_summary
 from apple_health_dashboard.services.filters import apply_date_filter
 from apple_health_dashboard.services.heart import hr_zone_distribution
 from apple_health_dashboard.services.heart import hrv_trend as _hrv_trend
-from apple_health_dashboard.services.ai_insights import generate_weekly_summary
 from apple_health_dashboard.services.insights import (
     active_energy_pairs,
     best_workout_type_for_hrv,
@@ -32,11 +32,11 @@ from apple_health_dashboard.services.insights import (
 )
 from apple_health_dashboard.web.charts import scatter_chart
 from apple_health_dashboard.web.page_utils import (
-    sidebar_nav,
     load_all_records,
     load_all_workouts,
     page_header,
     sidebar_date_filter,
+    sidebar_nav,
 )
 
 st.set_page_config(
@@ -1633,7 +1633,9 @@ with tab_report:
         trend_dir = "Rising" if slope > 0.5 else ("Falling" if slope < -0.5 else "Stable")
         last_score = float(readiness["score"].iloc[-1])
         forecast_cols = st.columns(3)
-        for i, (fc_col, day_label) in enumerate(zip(forecast_cols, ["Tomorrow", "Day +2", "Day +3"])):
+        for i, (fc_col, day_label) in enumerate(
+            zip(forecast_cols, ["Tomorrow", "Day +2", "Day +3"], strict=False)
+        ):
             projected = max(0, min(100, last_score + slope * (i + 1)))
             color = "#10B981" if projected >= 60 else ("#F59E0B" if projected >= 40 else "#EF4444")
             fc_col.markdown(f"""

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import pandas as pd
-import streamlit as st
-import duckdb
 import os
 
+import duckdb
+import pandas as pd
+import streamlit as st
+
 from apple_health_dashboard.db import default_db_path
-from apple_health_dashboard.web.page_utils import sidebar_nav, page_header
+from apple_health_dashboard.web.page_utils import page_header, sidebar_nav
 
 st.set_page_config(
     page_title="Health Chat · Apple Health Dashboard",
@@ -41,10 +42,18 @@ for msg in st.session_state.chat_messages:
         st.markdown(msg["content"])
 
 def query_db(query: str) -> pd.DataFrame:
+    # Only allow a single read-only SELECT. The SQL is LLM-generated, so we
+    # both sanity-check the statement and open the connection read-only to
+    # guarantee it can never mutate or drop the database.
+    stripped = query.strip().rstrip(";").strip()
+    if not stripped.lower().startswith(("select", "with")):
+        return pd.DataFrame({"Error": ["Only read-only SELECT queries are allowed."]})
+    if ";" in stripped:
+        return pd.DataFrame({"Error": ["Only a single statement is allowed."]})
     try:
-        con = duckdb.connect(str(db_path))
+        con = duckdb.connect(str(db_path), read_only=True)
         try:
-            return con.execute(query).df()
+            return con.execute(stripped).df()
         finally:
             con.close()
     except Exception as e:
@@ -81,7 +90,7 @@ if prompt := st.chat_input("Ask a question about your health data..."):
                 
                 system_prompt = f"You are an AI assistant analyzing Apple Health data stored in a DuckDB database. The database schema is:\n{schema}\n\nThe user asked: '{prompt}'. Reply ONLY with a valid SQL query (DuckDB) to answer the user's question. Do not use markdown blocks around the query, just return the raw SQL string. Ensure the query is read-only (SELECT)."
                 
-                model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
+                model = genai.GenerativeModel(os.environ.get("GEMINI_MODEL", "gemini-1.5-flash"))
                 response = model.generate_content(system_prompt)
                 
                 sql_query = response.text.strip()
