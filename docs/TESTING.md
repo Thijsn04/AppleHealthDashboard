@@ -1,6 +1,6 @@
 # Testing and benchmarks
 
-Run from the repository root with Python 3.11â€“3.14 and Node.js 24.
+Run from the repository root with Python 3.11–3.14 and Node.js 24.
 
 ```sh
 python -m pip install -e ".[dev]"
@@ -17,7 +17,7 @@ For Windows with Chrome installed, set `HEALTH_TEST_BROWSER=chrome` in the shell
 ## Verification
 
 - All 48 Python tests passed on Python 3.12 with DuckDB 2.0 and Python 3.14 with DuckDB 1.5.2. The tests cover parser metadata, ZIP member checks and isolation, malformed-input rollback, reimport identity, legacy enrichment, profile deletion scope, source selection, unit conversion, historical filters, elapsed time over a DST boundary, stage conflicts, and missing measurements.
-- Chrome at 1440Ã—1000 and 390Ã—844 exercised import preview, cancellation and confirmation, a keyboard chart scrubber, Explorer filters, comparison, CSV download, source rows, theme persistence, and navigation. Automated axe scans returned zero violations in the tested Explorer states. The browser test observed no page errors or external requests.
+- Chrome at 1440×1000 and 390×844 exercised import preview, cancellation and confirmation, a keyboard chart scrubber, Explorer filters, comparison, CSV download, source rows, theme persistence, and navigation. Automated axe scans returned zero violations in the tested Explorer states. The browser test observed no page errors or external requests.
 - A 3,650-observation daily series ran through the actual import and query paths. The date filter change to a painted frame took 131 ms in the final Windows Chrome run, including local API and browser automation overhead.
 - The initial repository baseline passed 40 Python tests and the Vite build. The updated frontend dependency audit returned zero npm advisories at verification time.
 
