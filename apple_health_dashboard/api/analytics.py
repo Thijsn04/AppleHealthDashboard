@@ -80,7 +80,7 @@ def metric_series(
           AND (? IS NULL OR r.source_name IS NOT DISTINCT FROM NULLIF(?, ''))
           AND end_at >= start_at
       ), unique_samples AS (
-        SELECT * FROM scoped WHERE normalized IS NOT NULL
+        SELECT * FROM scoped WHERE isfinite(normalized)
         QUALIFY ROW_NUMBER() OVER (
           PARTITION BY day, source, device, start_at, end_at, normalized ORDER BY record_hash
         ) = 1
@@ -226,14 +226,25 @@ def workout_summary(db_path: Path, days: int | None) -> dict[str, Any]:
     """Aggregate compatible reported quantities over deduplicated workout sessions."""
     where_sql, parameters = _date_filter(_WORKOUT_DAY, days, "workout")
     normalized = f"""
-      WITH workouts AS (
-        SELECT {_WORKOUT_DAY} AS day, workout_activity_type, start_at, source_name, source_start,
-               reported_hours AS hours, reported_km AS km, reported_kcal AS kcal, reported_bpm AS bpm
-        FROM workout {where_sql} AND end_at >= start_at
+      WITH ordered AS (
+        SELECT {_WORKOUT_DAY} AS day, workout_activity_type, start_at, end_at, source_name, source_start, workout_hash,
+               reported_hours AS hours, reported_km AS km, reported_kcal AS kcal, reported_bpm AS bpm,
+               MAX(end_at) OVER (
+                 PARTITION BY workout_activity_type ORDER BY start_at, end_at DESC, workout_hash
+                 ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+               ) AS prior_end
+        FROM workout {where_sql} AND end_at > start_at
+      ), clusters AS (
+        SELECT *, SUM(CASE WHEN prior_end IS NULL OR start_at >= prior_end THEN 1 ELSE 0 END) OVER (
+          PARTITION BY workout_activity_type ORDER BY start_at, end_at DESC, workout_hash
+        ) AS overlap_group
+        FROM ordered
+      ), workouts AS (
+        SELECT * FROM clusters
         QUALIFY ROW_NUMBER() OVER (
-          PARTITION BY workout_activity_type, start_at, end_at
-          ORDER BY (hours IS NOT NULL) DESC, (km IS NOT NULL) DESC,
-                   (kcal IS NOT NULL) DESC, source_name, workout_hash
+          PARTITION BY workout_activity_type, overlap_group
+          ORDER BY (hours IS NOT NULL) DESC, (km IS NOT NULL) DESC, (kcal IS NOT NULL) DESC,
+                   end_at - start_at DESC, source_name, workout_hash
         ) = 1
       )
     """

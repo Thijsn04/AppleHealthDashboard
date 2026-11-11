@@ -6,32 +6,19 @@ from datetime import date
 from pathlib import Path
 from xml.etree.ElementTree import Element
 
+from apple_health_dashboard.ingest.apple_health_records import _to_float
 from apple_health_dashboard.ingest.xml_stream import export_elements
-
-
-def _to_int(value: str | None) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(float(value))
-    except (ValueError, OverflowError):
-        return None
-
-
-def _parse_apple_date(value: str) -> date:
-    # Apple uses YYYY-MM-DD
-    return date.fromisoformat(value)
 
 
 @dataclass(frozen=True)
 class ActivitySummary:
     day: date
-    active_energy_burned_kcal: int | None
-    active_energy_burned_goal_kcal: int | None
-    apple_exercise_time_min: int | None
-    apple_exercise_time_goal_min: int | None
-    apple_stand_hours: int | None
-    apple_stand_hours_goal: int | None
+    active_energy_burned_kcal: float | None
+    active_energy_burned_goal_kcal: float | None
+    apple_exercise_time_min: float | None
+    apple_exercise_time_goal_min: float | None
+    apple_stand_hours: float | None
+    apple_stand_hours_goal: float | None
 
 
 def iter_activity_summaries_from_export_xml(export_xml_path: Path) -> Iterator[ActivitySummary]:
@@ -48,12 +35,19 @@ def parse_activity_summary(elem: Element) -> ActivitySummary | None:
     if not day:
         return None
 
+    energy_unit = attrib.get("activeEnergyBurnedUnit", "kcal")
+    factor = {"kcal": 1, "kJ": 1 / 4.184, "J": 1 / 4184}.get(energy_unit)
+
+    def energy(attribute: str) -> float | None:
+        value = _to_float(attrib.get(attribute))
+        return value * factor if value is not None and factor is not None else None
+
     return ActivitySummary(
-        day=_parse_apple_date(day),
-        active_energy_burned_kcal=_to_int(attrib.get("activeEnergyBurned")),
-        active_energy_burned_goal_kcal=_to_int(attrib.get("activeEnergyBurnedGoal")),
-        apple_exercise_time_min=_to_int(attrib.get("appleExerciseTime")),
-        apple_exercise_time_goal_min=_to_int(attrib.get("appleExerciseTimeGoal")),
-        apple_stand_hours=_to_int(attrib.get("appleStandHours")),
-        apple_stand_hours_goal=_to_int(attrib.get("appleStandHoursGoal")),
+        day=date.fromisoformat(day),
+        active_energy_burned_kcal=energy("activeEnergyBurned"),
+        active_energy_burned_goal_kcal=energy("activeEnergyBurnedGoal"),
+        apple_exercise_time_min=_to_float(attrib.get("appleExerciseTime")),
+        apple_exercise_time_goal_min=_to_float(attrib.get("appleExerciseTimeGoal")),
+        apple_stand_hours=_to_float(attrib.get("appleStandHours")),
+        apple_stand_hours_goal=_to_float(attrib.get("appleStandHoursGoal")),
     )

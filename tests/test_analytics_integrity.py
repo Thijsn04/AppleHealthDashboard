@@ -91,6 +91,8 @@ def test_workout_normalizes_export_statistics_and_preserves_missingness(tmp_path
         '<WorkoutStatistics type="HKQuantityTypeIdentifierDistanceWalkingRunning" unit="m" sum="4500"/>'
         '<WorkoutStatistics type="HKQuantityTypeIdentifierHeartRate" unit="count/min" average="143"/>'
         '</Workout>',
+        '<Workout workoutActivityType="HKWorkoutActivityTypeRunning" sourceName="Phone"'
+        ' startDate="2024-05-02 12:01:00 +0000" endDate="2024-05-02 12:31:00 +0000"/>',
     )
     result = workout_summary(db, 365)
     assert result["total_workouts"] == 1
@@ -122,7 +124,10 @@ def test_legacy_profile_enriches_existing_record_without_duplicate(tmp_path: Pat
             INSERT INTO health_record VALUES (?, '2023-12-31 23:30:00', '2023-12-31 23:30:00',
               NULL, 'Watch', 'km', 1, NULL, ?)
         """, [DISTANCE, stable_record_hash(original)])
+        con.execute("CREATE TABLE activity_summary (day DATE PRIMARY KEY, active_energy_burned_kcal INTEGER)")
+        con.execute("INSERT INTO activity_summary VALUES ('2023-12-31', 321)")
         init_db(con)
+        assert con.execute("SELECT active_energy_burned_kcal FROM activity_summary").fetchone() == (321.0,)
     assert metric_series(db, DISTANCE, None)["legacy_samples"] == 1
     assert import_export_xml_to_duckdb_all(xml, db)["records_inserted"] == 0
     result = metric_series(db, DISTANCE, None)
@@ -144,3 +149,27 @@ def test_preview_checks_root_and_compares_instants(tmp_path: Path):
     )
     assert preview_export(file).earliest_start == "2024-01-02 00:00:00 +0200"
     assert preview_export(file).latest_end == "2024-01-01 23:00:00 +0000"
+
+
+def test_profile_deletion_is_scoped_to_managed_files(tmp_path, monkeypatch):
+    from apple_health_dashboard.local_data import delete_local_data
+
+    monkeypatch.chdir(tmp_path)
+    paths = (
+        tmp_path / "health.duckdb",
+        tmp_path / "health.duckdb.wal",
+        tmp_path / "health.duckdb.tmp" / "spill",
+        tmp_path / ".tmp" / "api-imports" / "preview.xml",
+    )
+    for path in paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("synthetic")
+    retained = tmp_path / "original.xml"
+    retained.write_text("<HealthData/>")
+    unrelated = tmp_path / ".tmp" / "notes.csv"
+    unrelated.write_text("example")
+    delete_local_data()
+    delete_local_data()
+    assert all(not path.exists() for path in paths)
+    assert retained.is_file()
+    assert unrelated.is_file()

@@ -22,7 +22,7 @@ def main() -> None:
 
     args = parser.parse_args()
     if args.command == "serve":
-        uvicorn.run(create_app(), host=args.host, port=args.port)
+        uvicorn.run(create_app(), host=args.host, port=args.port, access_log=False)
         return
     if args.command == "clear":
         from apple_health_dashboard.local_data import delete_local_data

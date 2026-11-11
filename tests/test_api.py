@@ -2,13 +2,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from apple_health_dashboard.api.app import create_app
+from apple_health_dashboard.api.imports import LocalImportStaging
 
 SINGLE_RECORD_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <HealthData><Record type="HKQuantityTypeIdentifierStepCount" unit="count" value="42"
 startDate="2024-01-01 10:00:00 +0000" endDate="2024-01-01 10:05:00 +0000"/></HealthData>"""
+
+
+@pytest.fixture(autouse=True)
+def isolated_profile(tmp_path, monkeypatch):
+    def database():
+        return tmp_path / "health.duckdb"
+
+    monkeypatch.setattr("apple_health_dashboard.api.routes.default_db_path", database)
+    monkeypatch.setattr("apple_health_dashboard.api.app.default_db_path", database)
+    monkeypatch.setattr("apple_health_dashboard.api.routes._staging", LocalImportStaging(tmp_path / "staging"))
 
 
 def test_health_endpoint_is_local_only() -> None:
@@ -31,8 +43,7 @@ def test_metric_catalog_has_unique_record_types() -> None:
     assert "HKQuantityTypeIdentifierStepCount" in record_types
 
 
-def test_import_requires_preview_then_explicit_confirmation(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("apple_health_dashboard.api.routes.default_db_path", lambda: tmp_path / "health.duckdb")
+def test_import_requires_preview_then_explicit_confirmation() -> None:
     client = TestClient(create_app(), base_url="http://localhost")
 
     preview = client.post(
@@ -47,8 +58,7 @@ def test_import_requires_preview_then_explicit_confirmation(monkeypatch, tmp_pat
     assert completed.json()["records_inserted"] == 1
 
 
-def test_analytics_endpoints_are_bounded_and_use_the_local_import(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("apple_health_dashboard.api.routes.default_db_path", lambda: tmp_path / "health.duckdb")
+def test_analytics_endpoints_are_bounded_and_use_the_local_import() -> None:
     client = TestClient(create_app(), base_url="http://localhost")
     preview = client.post(
         "/api/v1/imports/preview",
@@ -69,14 +79,10 @@ def test_analytics_endpoints_are_bounded_and_use_the_local_import(monkeypatch, t
     assert sleep.json() == {"average_hours": None, "night_count": 0, "nightly": [], "stages": []}
 
 
-def test_identical_zip_previews_are_isolated_and_cancelled(tmp_path, monkeypatch):
+def test_identical_zip_previews_are_isolated_and_cancelled(tmp_path: Path):
     import io
     import zipfile
 
-    from apple_health_dashboard.api.imports import LocalImportStaging
-
-    monkeypatch.setattr("apple_health_dashboard.api.routes.default_db_path", lambda: tmp_path / "health.duckdb")
-    monkeypatch.setattr("apple_health_dashboard.api.routes._staging", LocalImportStaging(tmp_path / "staging"))
     payload = io.BytesIO()
     with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("apple_health_export/export.xml", SINGLE_RECORD_XML)

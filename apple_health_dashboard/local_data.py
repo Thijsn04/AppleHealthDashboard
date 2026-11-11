@@ -17,6 +17,6 @@ def delete_local_data() -> None:
     db = local_db_path()
     db.unlink(missing_ok=True)
     db.with_suffix(".duckdb.wal").unlink(missing_ok=True)
-    staging = local_tmp_dir() / "api-imports"
-    if staging.exists():
-        shutil.rmtree(staging)
+    for folder in (db.with_suffix(".duckdb.tmp"), local_tmp_dir() / "api-imports"):
+        if folder.exists():
+            shutil.rmtree(folder)

@@ -12,10 +12,11 @@ from apple_health_dashboard.ingest.apple_health_workouts import parse_workouts
 from apple_health_dashboard.ingest.xml_stream import export_elements
 from apple_health_dashboard.storage.duckdb_store import (
     init_db,
+    merge_records,
     open_db,
+    stage_record_metadata,
+    stage_records,
     upsert_activity_summaries,
-    upsert_record_metadata,
-    upsert_records,
     upsert_workouts,
 )
 
@@ -33,7 +34,7 @@ def import_export_xml_to_duckdb(
     export_xml_path: Path,
     db_path: Path,
     *,
-    batch_size: int = 2000,
+    batch_size: int = 8000,
     on_progress: Callable[[int], None] | None = None,
 ) -> int:
     """Import records atomically and return the number of newly stored records."""
@@ -50,7 +51,7 @@ def import_export_xml_to_duckdb_all(
     export_xml_path: Path,
     db_path: Path,
     *,
-    record_batch_size: int = 2000,
+    record_batch_size: int = 8000,
     workout_batch_size: int = 300,
     on_progress: Callable[[str, int], None] | None = None,
 ) -> dict[str, int]:
@@ -68,7 +69,11 @@ def import_export_xml_to_duckdb_all(
             con.execute("BEGIN TRANSACTION")
             try:
                 counts_before = _table_counts(con)
+                con.execute("CREATE TEMP TABLE incoming_record AS FROM health_record LIMIT 0")
+                con.execute("CREATE TEMP TABLE incoming_metadata AS FROM record_metadata LIMIT 0")
                 skipped = _import_elements(con, export_xml_path, record_batch_size, workout_batch_size, on_progress)
+                merge_records(con)
+                con.execute("INSERT INTO record_metadata FROM incoming_metadata ON CONFLICT DO NOTHING")
                 counts_after = _table_counts(con)
                 con.execute("COMMIT")
             except Exception:
@@ -101,8 +106,8 @@ def _import_elements(con, export_xml_path, record_batch_size, workout_batch_size
             record_metadata.extend((m.record_hash, m.key, m.value) for m in metadata)
             processed_records += 1
             if len(records) >= record_batch_size:
-                upsert_records(con, records)
-                upsert_record_metadata(con, record_metadata)
+                stage_records(con, records)
+                stage_record_metadata(con, record_metadata)
                 records.clear()
                 record_metadata.clear()
                 if on_progress:
@@ -136,8 +141,8 @@ def _import_elements(con, export_xml_path, record_batch_size, workout_batch_size
                 upsert_activity_summaries(con, rings)
                 rings.clear()
 
-    upsert_records(con, records)
-    upsert_record_metadata(con, record_metadata)
+    stage_records(con, records)
+    stage_record_metadata(con, record_metadata)
     upsert_workouts(con, workouts, workout_metadata)
     upsert_activity_summaries(con, rings)
     if on_progress:

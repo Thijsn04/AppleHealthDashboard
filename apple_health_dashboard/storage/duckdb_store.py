@@ -40,12 +40,12 @@ CREATE TABLE IF NOT EXISTS record_metadata (
 
 CREATE TABLE IF NOT EXISTS activity_summary (
     day DATE PRIMARY KEY,
-    active_energy_burned_kcal INTEGER,
-    active_energy_burned_goal_kcal INTEGER,
-    apple_exercise_time_min INTEGER,
-    apple_exercise_time_goal_min INTEGER,
-    apple_stand_hours INTEGER,
-    apple_stand_hours_goal INTEGER
+    active_energy_burned_kcal DOUBLE,
+    active_energy_burned_goal_kcal DOUBLE,
+    apple_exercise_time_min DOUBLE,
+    apple_exercise_time_goal_min DOUBLE,
+    apple_stand_hours DOUBLE,
+    apple_stand_hours_goal DOUBLE
 );
 
 CREATE TABLE IF NOT EXISTS workout (
@@ -98,6 +98,10 @@ def init_db(con: duckdb.DuckDBPyConnection) -> None:
             if column not in existing:
                 con.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {kind}")
 
+    for _, column, kind, *_ in con.execute("PRAGMA table_info('activity_summary')").fetchall():
+        if kind == "INTEGER":
+            con.execute(f"ALTER TABLE activity_summary ALTER COLUMN {column} TYPE DOUBLE")
+
 
 def stable_record_hash(record: HealthRecord) -> str:
     import hashlib
@@ -116,19 +120,18 @@ def stable_record_hash(record: HealthRecord) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def upsert_records(con: duckdb.DuckDBPyConnection, records: list[HealthRecord | Record]) -> int:
+def stage_records(con: duckdb.DuckDBPyConnection, records: list[Record]) -> None:
     if not records:
-        return 0
+        return
 
     rows = [
         (
-            r.record_type if isinstance(r, Record) else r.type,
+            r.record_type,
             _utc_timestamp(r.start_at), _utc_timestamp(r.end_at), _utc_timestamp(r.creation_at),
             r.source_name, r.unit, r.value, r.value_str,
-            record_hash(r) if isinstance(r, Record) else stable_record_hash(r),
+            record_hash(r),
             _dt_to_iso(r.start_at), _dt_to_iso(r.end_at), _dt_to_iso(r.creation_at),
-            r.device if isinstance(r, Record) else None,
-            r.source_version if isinstance(r, Record) else None,
+            r.device, r.source_version,
         )
         for r in records
     ]
@@ -136,18 +139,28 @@ def upsert_records(con: duckdb.DuckDBPyConnection, records: list[HealthRecord | 
         "type", "start_at", "end_at", "creation_at", "source_name", "unit", "value", "value_str",
         "record_hash", "source_start", "source_end", "source_creation", "device", "source_version",
     ])
+    con.execute("INSERT INTO incoming_record BY NAME SELECT * FROM batch")
+
+
+def merge_records(con: duckdb.DuckDBPyConnection) -> None:
+    # Bulk merge avoids repeatedly probing and rebuilding the unique index inside one transaction.
     con.execute("""
-        INSERT INTO health_record BY NAME SELECT * FROM batch
+        INSERT INTO health_record BY NAME
+        SELECT * FROM incoming_record
+        QUALIFY ROW_NUMBER() OVER (
+          PARTITION BY record_hash
+          ORDER BY (device IS NOT NULL) DESC, (source_version IS NOT NULL) DESC, device, source_version
+        ) = 1
         ON CONFLICT (record_hash) DO UPDATE SET
           start_at = excluded.start_at, end_at = excluded.end_at, creation_at = excluded.creation_at,
           source_start = excluded.source_start, source_end = excluded.source_end,
-          source_creation = excluded.source_creation, device = excluded.device,
-          source_version = excluded.source_version
+          source_creation = excluded.source_creation,
+          device = COALESCE(health_record.device, excluded.device),
+          source_version = COALESCE(health_record.source_version, excluded.source_version)
         WHERE health_record.source_start IS NULL
            OR (health_record.device IS NULL AND excluded.device IS NOT NULL)
            OR (health_record.source_version IS NULL AND excluded.source_version IS NOT NULL)
         """)
-    return len(rows)
 
 
 def _utc_timestamp(value: datetime | None) -> str | None:
@@ -294,13 +307,12 @@ def iter_workouts(con: duckdb.DuckDBPyConnection) -> Iterator[Workout]:
         )
 
 
-def upsert_record_metadata(con: duckdb.DuckDBPyConnection, metadata: list[tuple[str, str, str]]) -> int:
+def stage_record_metadata(con: duckdb.DuckDBPyConnection, metadata: list[tuple[str, str, str]]) -> None:
     if not metadata:
-        return 0
+        return
 
     batch = pd.DataFrame.from_records(metadata, columns=["record_hash", "key", "value"])  # noqa: F841
-    con.execute("INSERT INTO record_metadata BY NAME SELECT * FROM batch ON CONFLICT DO NOTHING")
-    return len(metadata)
+    con.execute("INSERT INTO incoming_metadata BY NAME SELECT * FROM batch")
 
 
 def get_record_metadata_for_hash(
