@@ -12,7 +12,7 @@ npm --prefix frontend exec -- playwright install chromium
 npm --prefix frontend run test:e2e
 ```
 
-For Windows with Chrome installed, set `HEALTH_TEST_BROWSER=chrome` in the shell to use the system browser. Set `HEALTH_SCREENSHOTS=1` to refresh the three fictional-profile screenshots. The browser test runs the built app against a temporary synthetic database on port 8765. Keep that port available. GitHub Actions runs Python tests on 3.11 and 3.12 and browser tests on Linux Chromium.
+For Windows with Chrome installed, set `HEALTH_TEST_BROWSER=chrome` in the shell to use the system browser. Set `HEALTH_SCREENSHOTS=1` to refresh the three fictional-profile screenshots. The browser test runs the built app against a temporary synthetic database on port 8765. Keep that port available. GitHub Actions runs Python tests on 3.11 and 3.12 and browser tests with the Chrome installation on the Ubuntu 24.04 runner. [GitHub runner image manifest](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md).
 
 ## Verification
 
