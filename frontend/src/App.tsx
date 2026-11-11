@@ -1,224 +1,274 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  Activity,
-  ArrowRight,
-  Bot,
-  Database,
-  HeartPulse,
-  LockKeyhole,
-  Moon,
-  Settings,
-  ShieldCheck,
-  Upload,
-  UserRound
+  Activity, ArrowRight, BarChart3, CircleHelp, Dumbbell, Footprints, HeartPulse,
+  LayoutDashboard, LockKeyhole, Moon, Scale, Sun, Upload, Watch,
 } from "lucide-react";
-import { Link, NavLink, Route, Routes, useParams } from "react-router-dom";
+import { Link, NavLink, Route, Routes, useLocation, useParams } from "react-router-dom";
 
 import {
-  confirmImport,
-  getAvailableTypes,
-  getHealth,
-  getMetricSeries,
-  getOverview,
-  getRecords,
-  getRings,
-  getSleepSummary,
-  getWorkoutSummary,
-  previewImport,
-  type AvailableType,
-  type ImportPreview,
-  type Overview,
-  type RecordPage,
-  type RingDay,
-  type SleepSummary,
-  type WorkoutSummary
+  confirmImport, discardImport, getAvailableTypes, getMetricSeries, getOverview, getRings,
+  getSleepSummary, getWorkoutSummary, previewImport, type AvailableType, type ImportPreview, type Overview,
 } from "./api";
+import demoUrl from "./demo.xml?url";
+import { Explorer } from "./Explorer";
+import { DataTable, formatDate, formatNumber, LineChart, RequestStatus, useRequest } from "./ui";
 
-type LoadState = "loading" | "ready" | "error";
-type ImportState = "idle" | "previewing" | "reviewing" | "importing" | "error";
-
-const navigation = [
-  { to: "/", label: "Overview", icon: Activity, end: true },
-  { to: "/metrics/activity", label: "Activity", icon: Activity },
+const nav = [
+  { to: "/", label: "Overview", icon: LayoutDashboard },
+  { to: "/metrics/activity", label: "Activity", icon: Footprints },
   { to: "/metrics/heart", label: "Heart", icon: HeartPulse },
   { to: "/sleep", label: "Sleep", icon: Moon },
-  { to: "/workouts", label: "Workouts", icon: Activity },
-  { to: "/metrics/body", label: "Body", icon: Activity },
-  { to: "/metrics/nutrition", label: "Nutrition", icon: Activity },
-  { to: "/metrics/mobility", label: "Mobility", icon: Activity },
-  { to: "/metrics/symptoms", label: "Symptoms", icon: Activity },
-  { to: "/explore", label: "Explore", icon: Database },
-  { to: "/settings", label: "Settings", icon: Settings }
+  { to: "/workouts", label: "Workouts", icon: Dumbbell },
+  { to: "/metrics/body", label: "Body", icon: Scale },
+  { to: "/rings", label: "Activity rings", icon: Watch },
+  { to: "/explore", label: "Data Explorer", icon: BarChart3 },
+  { to: "/settings", label: "Privacy", icon: LockKeyhole },
 ];
 
-const categoryNames: Record<string, string> = {
+const categories: Record<string, string> = {
   activity: "Activity", heart: "Heart", body: "Body", nutrition: "Nutrition", mobility: "Mobility",
-  respiratory: "Respiratory", symptoms: "Symptoms", environment: "Environment", mind: "Mind", other: "Other"
+  respiratory: "Respiratory", symptoms: "Symptoms", environment: "Environment", mind: "Mind", other: "Other",
 };
 
-function formatDate(value: string | null): string {
-  if (!value) return "Not imported";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
+function PageHeading({ title, description, children }: { title: string; description: string; children?: React.ReactNode }) {
+  return <header className="page-heading">
+    <div><h1>{title}</h1><p>{description}</p></div>{children}
+  </header>;
 }
 
-function formatNumber(value: number | null, maximumFractionDigits = 1): string {
-  if (value === null) return "No data";
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits }).format(value);
+function Stat({ label, value, note, icon: Icon }: {
+  label: string; value: string; note?: string; icon?: typeof Activity;
+}) {
+  return <article className="panel stat-card">
+    <div className="stat-label">{Icon && <span className="stat-icon"><Icon size={17} aria-hidden="true" /></span>}{label}</div>
+    <strong>{value}</strong>
+    {note && <span>{note}</span>}
+  </article>;
 }
 
-function useRequest<T>(request: () => Promise<T>, dependencies: unknown[]) {
-  const [state, setState] = useState<LoadState>("loading");
-  const [data, setData] = useState<T | null>(null);
-  useEffect(() => {
-    let active = true;
-    setState("loading");
-    void request().then((result) => {
-      if (active) { setData(result); setState("ready"); }
-    }).catch(() => { if (active) setState("error"); });
-    return () => { active = false; };
-  // The caller owns the dependency list for an endpoint request.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, dependencies);
-  return { state, data };
-}
-
-function InlineStatus({ state, empty = "No exported data is available for this view yet." }: { state: LoadState; empty?: string }) {
-  if (state === "loading") return <p className="muted" aria-live="polite">Loading local analytics...</p>;
-  if (state === "error") return <p className="notice error">{empty}</p>;
-  return null;
-}
-
-function LineChart({ points, valueKey = "value", label }: { points: Array<{ date: string } & Record<string, unknown>>; valueKey?: string; label: string }) {
-  const values = points.map((point) => Number(point[valueKey])).filter(Number.isFinite);
-  if (!values.length) return <div className="empty-chart">No compatible measurements in this period.</div>;
-  const width = 720;
-  const height = 220;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const coordinates = points.map((point, index) => {
-    const value = Number(point[valueKey]);
-    const x = points.length === 1 ? width / 2 : (index / (points.length - 1)) * width;
-    const y = height - ((value - min) / range) * (height - 32) - 16;
-    return `${x},${y}`;
-  }).join(" ");
-  return (
-    <figure className="chart" aria-label={label}>
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${label}. Values range from ${formatNumber(min)} to ${formatNumber(max)}.`}>
-        <line x1="0" y1={height - 16} x2={width} y2={height - 16} className="chart-axis" />
-        <polyline points={coordinates} className="chart-line" />
-      </svg>
-      <figcaption><span>{formatDate(points[0].date)}</span><span>{formatDate(points[points.length - 1].date)}</span></figcaption>
-    </figure>
-  );
-}
-
-function OverviewPage({ overview, onImport }: { overview: Overview; onImport: () => void }) {
-  const modules = [
-    { label: "Activity", detail: "Steps, distance, energy, rings, and training load.", path: "/metrics/activity", icon: Activity },
-    { label: "Heart", detail: "Heart rate, HRV, cardio fitness, and respiratory trends.", path: "/metrics/heart", icon: HeartPulse },
-    { label: "Sleep", detail: "Duration, stages, schedule consistency, and recovery context.", path: "/sleep", icon: Moon },
-    { label: "Explore", detail: "Search, filter, inspect, and verify source data you own.", path: "/explore", icon: Database }
-  ];
-  return <>
-    <section className="hero-panel">
-      <div>
-        <span className="hero-icon"><ShieldCheck size={20} aria-hidden="true" /></span>
-        <h2>{overview.has_data ? "Your latest health overview" : "Start with a private import"}</h2>
-        <p>{overview.has_data ? `Your local profile contains ${overview.record_count.toLocaleString()} observations through ${formatDate(overview.last_record_at)}.` : "Import an Apple Health export to create a local profile. Your source file stays on this device."}</p>
-      </div>
-      <button className="primary-action" type="button" onClick={onImport}><Upload size={18} aria-hidden="true" /> Import export <ArrowRight size={16} aria-hidden="true" /></button>
-    </section>
-    <section className="stat-grid" aria-label="Profile summary">
-      <article className="stat-card"><span>Observations</span><strong>{overview.record_count.toLocaleString()}</strong></article>
-      <article className="stat-card"><span>Workouts</span><strong>{overview.workout_count.toLocaleString()}</strong></article>
-      <article className="stat-card"><span>Ring days</span><strong>{overview.ring_day_count.toLocaleString()}</strong></article>
-      <article className="stat-card"><span>First record</span><strong>{formatDate(overview.first_record_at)}</strong></article>
-    </section>
-    <section className="section-heading"><div><p className="eyebrow">Analyze with context</p><h2>Built around the questions that matter.</h2></div><span className="method-note">Methods and limitations are always visible.</span></section>
-    <section className="module-grid">
-      {modules.map(({ label, detail, path, icon: Icon }) => <article className="module-card" key={label}><Icon size={22} aria-hidden="true" /><h3>{label}</h3><p>{detail}</p><Link to={path}>Open {label} <ArrowRight size={15} aria-hidden="true" /></Link></article>)}
-    </section>
-  </>;
-}
-
-function MetricPage({ types }: { types: AvailableType[] }) {
-  const { category = "activity" } = useParams();
-  const name = categoryNames[category] ?? "Other";
-  const categoryTypes = useMemo(() => types.filter((item) => item.category === name), [name, types]);
-  const [selected, setSelected] = useState<string>("");
-  useEffect(() => { setSelected(categoryTypes[0]?.record_type ?? ""); }, [category, categoryTypes]);
-  const series = useRequest(() => getMetricSeries(selected), [selected]);
-  return <section className="page-stack">
-    <div className="page-intro"><p className="eyebrow">{name} metrics</p><h2>{name} trends from your local export</h2><p>Choose a metric to inspect its daily aggregation. The method follows the documented metric catalog.</p></div>
-    {!categoryTypes.length && <section className="empty-panel">No {name.toLowerCase()} measurements are present in this import. The Explorer still lets you inspect every exported type.</section>}
-    {categoryTypes.length > 0 && <>
-      <label className="field-label">Metric<select value={selected} onChange={(event) => setSelected(event.target.value)}>{categoryTypes.map((item) => <option key={item.record_type} value={item.record_type}>{friendlyMetric(item.record_type)} ({item.count.toLocaleString()})</option>)}</select></label>
-      <InlineStatus state={series.state} />
-      {series.data && <section className="analysis-card"><div className="card-header"><div><h3>{friendlyMetric(series.data.record_type)}</h3><p>{series.data.aggregation} aggregation by local calendar day</p></div><span>{series.data.points.length} days</span></div><LineChart points={series.data.points} label={`${friendlyMetric(series.data.record_type)} trend`} /><DataTable headings={["Date", "Value", "Samples"]} rows={series.data.points.slice(-10).reverse().map((point) => [formatDate(point.date), `${formatNumber(point.value)} ${point.unit ?? ""}`, point.sample_count.toLocaleString()])} /></section>}
-    </>}
-  </section>;
-}
-
-function SleepPage() {
-  const result = useRequest(getSleepSummary, []);
-  const data = result.data;
-  return <section className="page-stack"><div className="page-intro"><p className="eyebrow">Sleep</p><h2>Nightly sleep, separated from time in bed.</h2><p>Only Apple Health intervals labelled as asleep are included in the primary duration trend.</p></div><InlineStatus state={result.state} />{data && <><section className="stat-grid compact"><article className="stat-card"><span>Average sleep</span><strong>{formatNumber(data.average_hours)} h</strong></article><article className="stat-card"><span>Nights logged</span><strong>{data.night_count}</strong></article></section><section className="analysis-card"><div className="card-header"><h3>Nightly duration</h3><span>Hours asleep</span></div><LineChart points={data.nightly.map((point) => ({ ...point, value: point.hours, unit: "h", sample_count: 1 }))} label="Nightly sleep duration" /></section><DataTable headings={["Stage", "Hours"]} rows={data.stages.map((stage) => [stage.label, formatNumber(stage.hours)])} /></>}</section>;
-}
-
-function WorkoutsPage() {
-  const result = useRequest(getWorkoutSummary, []);
-  const data = result.data;
-  return <section className="page-stack"><div className="page-intro"><p className="eyebrow">Workouts</p><h2>Training volume with the source details intact.</h2><p>Totals are based on explicitly exported workout sessions for the last 365 days.</p></div><InlineStatus state={result.state} />{data && <><section className="stat-grid compact"><article className="stat-card"><span>Sessions</span><strong>{data.total_workouts}</strong></article><article className="stat-card"><span>Duration</span><strong>{formatNumber(data.total_duration_hours)} h</strong></article><article className="stat-card"><span>Distance</span><strong>{formatNumber(data.total_distance_km)} km</strong></article><article className="stat-card"><span>Energy</span><strong>{formatNumber(data.total_energy_kcal, 0)} kcal</strong></article></section><section className="analysis-card"><div className="card-header"><h3>Weekly training volume</h3><span>Hours</span></div><LineChart points={data.weekly.map((point) => ({ ...point, value: point.duration_hours, unit: "h", sample_count: point.count }))} label="Weekly workout duration" /></section><DataTable headings={["Workout type", "Sessions", "Hours"]} rows={data.by_type.map((item) => [item.label, item.count.toString(), formatNumber(item.duration_hours)])} /></>}</section>;
-}
-
-function RingsPage() {
-  const result = useRequest(getRings, []);
-  return <section className="page-stack"><div className="page-intro"><p className="eyebrow">Activity rings</p><h2>Ring progress from Apple Activity summaries.</h2><p>Ring values are available only when the selected export contains ActivitySummary entries.</p></div><InlineStatus state={result.state} />{result.data && <RingsContent data={result.data} />}</section>;
-}
-
-function RingsContent({ data }: { data: RingDay[] }) {
-  if (!data.length) return <section className="empty-panel">No Activity ring summaries are available in this export.</section>;
-  const points = data.map((item) => ({ date: item.date, value: item.active_energy_kcal ?? 0, unit: "kcal", sample_count: 1 }));
-  return <section className="analysis-card"><div className="card-header"><h3>Active energy</h3><span>Last 90 days</span></div><LineChart points={points} label="Daily active energy" /><DataTable headings={["Date", "Move", "Exercise", "Stand"]} rows={data.slice(-10).reverse().map((item) => [formatDate(item.date), `${formatNumber(item.active_energy_kcal, 0)} / ${formatNumber(item.active_energy_goal_kcal, 0)} kcal`, `${formatNumber(item.exercise_minutes, 0)} / ${formatNumber(item.exercise_goal_minutes, 0)} min`, `${formatNumber(item.stand_hours, 0)} / ${formatNumber(item.stand_goal_hours, 0)} h`])} /></section>;
-}
-
-function ExplorerPage({ types }: { types: AvailableType[] }) {
+function OverviewPage({ overview, types, revision, onImport, onDemo, busy }: {
+  overview: Overview; types: AvailableType[]; revision: number; onImport: () => void; onDemo: () => void; busy: boolean;
+}) {
   const [selected, setSelected] = useState("");
-  const [offset, setOffset] = useState(0);
-  useEffect(() => { setOffset(0); }, [selected]);
-  const records = useRequest(() => getRecords(selected || undefined, offset), [selected, offset]);
-  return <section className="page-stack"><div className="page-intro"><p className="eyebrow">Explorer</p><h2>Inspect source observations with a bounded, local-only browser.</h2><p>Raw records are paginated and shown only after you open this view.</p></div><label className="field-label">Record type<select value={selected} onChange={(event) => setSelected(event.target.value)}><option value="">All exported types</option>{types.map((item) => <option key={item.record_type} value={item.record_type}>{friendlyMetric(item.record_type)} ({item.count.toLocaleString()})</option>)}</select></label><InlineStatus state={records.state} />{records.data && <RecordTable data={records.data} onPrevious={() => setOffset(Math.max(0, offset - records.data!.limit))} onNext={() => setOffset(offset + records.data!.limit)} />}</section>;
+  const chartable = types.filter((type) => type.chartable);
+  const trend = chartable.find((type) => type.record_type === selected)
+    ?? chartable.find((type) => type.record_type === "HKQuantityTypeIdentifierStepCount") ?? chartable[0];
+  const end = trend?.last_day;
+  const start = end && new Date(Date.parse(end) - 29 * 86_400_000).toISOString().slice(0, 10);
+  const series = useRequest(trend ? () => getMetricSeries(trend.record_type, { start, end }) : null, `${revision}-${trend?.record_type}`);
+  const sources = new Set(types.flatMap((type) => type.sources).filter(Boolean)).size;
+  const starts = types.map((type) => type.first_day).sort();
+  const ends = types.map((type) => type.last_day).sort();
+  return <div className="workspace">
+    <PageHeading title="Health overview" description={overview.has_data ? "Explore patterns across your Apple Health history." : "A private workspace for your Apple Health history."}>
+      <span className="status-chip"><LockKeyhole size={14} aria-hidden="true" /> On this device</span>
+    </PageHeading>
+    {!overview.has_data ? <section className="welcome panel">
+      <span className="welcome-icon"><Activity size={32} aria-hidden="true" /></span>
+      <h2>Start with an Apple Health export</h2>
+      <p>Choose the ZIP or XML from Apple Health. Review its contents before adding observations, workouts, and activity rings to your local profile.</p>
+      <div className="actions"><button className="button primary" disabled={busy} onClick={onImport}><Upload size={17} aria-hidden="true" /> Import export</button>
+        <button className="button subtle" disabled={busy} onClick={onDemo}>Try synthetic demo <ArrowRight size={16} aria-hidden="true" /></button></div>
+    </section> : <>
+      <section className="stats" aria-label="Profile totals">
+        <Stat label="Observations" value={formatNumber(overview.record_count, 0)} note={`${types.length} exported types`} icon={Activity} />
+        <Stat label="Workouts" value={formatNumber(overview.workout_count, 0)} note="Imported session records" icon={Dumbbell} />
+        <Stat label="Activity rings" value={formatNumber(overview.ring_day_count, 0)} note="Days with summaries" icon={Watch} />
+        <Stat label="Record sources" value={formatNumber(sources, 0)} note="Named export sources" icon={BarChart3} />
+      </section>
+      <div className="overview-grid">
+        <section className="panel overview-trend">
+          <header className="panel-heading"><div><h2>Recent trend</h2><p>30 days through {end ? formatDate(end) : "the latest observation"}</p></div>
+            {trend && <label className="inline-field"><span className="sr-only">Overview metric</span><select value={trend.record_type} onChange={(e) => setSelected(e.target.value)}>
+              {chartable.map((type) => <option key={type.record_type} value={type.record_type}>{type.label}</option>)}</select></label>}
+          </header>
+          <RequestStatus {...series} />
+          {series.data && trend && <LineChart key={trend.record_type} points={series.data.points} label={trend.label} unit={series.data.points[0]?.unit ?? ""} />}
+          {!trend && <p className="empty-panel">There are no compatible numeric metrics in this export.</p>}
+          <Link className="text-link" to="/explore">Open Data Explorer <ArrowRight size={16} aria-hidden="true" /></Link>
+        </section>
+        <section className="panel coverage-panel">
+          <header className="panel-heading"><div><h2>Data coverage</h2><p>{types.length ? `${formatDate(starts[0])} to ${formatDate(ends.at(-1)!)}` : "Observation dates unavailable"}</p></div></header>
+          <ul className="coverage-list">
+            {Object.entries(overview.category_counts).sort((a, b) => b[1] - a[1]).slice(0, 7).map(([name, count]) => {
+              const slug = Object.keys(categories).find((key) => categories[key] === name);
+              return <li key={name}><div><Link to={slug ? `/metrics/${slug}` : "/explore"}>{name}</Link><span>{formatNumber(count, 0)}</span></div>
+                <progress value={count} max={overview.record_count} aria-label={`${name} share of observations`} /></li>;
+            })}
+          </ul>
+          {!overview.record_count && <p className="muted">This export contains summaries without individual observations.</p>}
+        </section>
+      </div>
+    </>}
+  </div>;
 }
 
-function RecordTable({ data, onPrevious, onNext }: { data: RecordPage; onPrevious: () => void; onNext: () => void }) {
-  return <section className="analysis-card"><div className="card-header"><div><h3>Source records</h3><p>{data.total.toLocaleString()} records match this filter</p></div><span>Page {Math.floor(data.offset / data.limit) + 1}</span></div><DataTable headings={["Type", "Start", "Value", "Source"]} rows={data.items.map((item) => [friendlyMetric(item.record_type), formatDate(item.start_at), item.value !== null ? `${formatNumber(item.value)} ${item.unit ?? ""}` : item.value_str ?? "No value", item.source_name ?? "Unknown"])} /><div className="pagination"><button className="secondary-action" disabled={data.offset === 0} onClick={onPrevious}>Previous</button><button className="secondary-action" disabled={data.offset + data.limit >= data.total} onClick={onNext}>Next</button></div></section>;
+function MetricPage({ types, revision }: { types: AvailableType[]; revision: number }) {
+  const { category = "activity" } = useParams();
+  const name = categories[category] ?? "Other";
+  return <div className="workspace"><PageHeading title={name} description="Explore exported measurements by source and calendar period." />
+    <Explorer key={category} types={types} revision={revision} category={name} /></div>;
+}
+
+function SleepPage({ revision }: { revision: number }) {
+  const result = useRequest(getSleepSummary, `sleep-${revision}`);
+  const data = result.data;
+  return <div className="workspace"><PageHeading title="Sleep" description="Recorded time asleep, grouped by the day each continuous episode ended." />
+    <RequestStatus {...result} />
+    {data && <>
+      <section className="stats compact"><Stat label="Average on observed days" value={data.average_hours === null ? "Unavailable" : `${formatNumber(data.average_hours)} h`} icon={Moon} /><Stat label="Observed days" value={String(data.night_count)} /></section>
+      <section className="panel"><header className="panel-heading"><div><h2>Time asleep</h2><p>90 days through the latest recorded sleep</p></div></header>
+        <LineChart points={data.nightly.map((p) => ({ date: p.date, value: p.hours }))} label="Daily time asleep" unit="h" />
+        <details className="method"><summary>How sleep is counted</summary><p>Overlapping asleep intervals count once. Only segments with one reported specific stage contribute to stage totals. Unspecified or conflicting stages can leave the stage totals below overall sleep duration.</p></details>
+      </section>
+      <section className="panel"><h2>Recorded stages</h2><DataTable headings={["Stage", "Hours"]} rows={data.stages.map((p) => [p.label, formatNumber(p.hours)])} /></section>
+    </>}
+  </div>;
+}
+
+function WorkoutsPage({ revision }: { revision: number }) {
+  const result = useRequest(getWorkoutSummary, `workouts-${revision}`);
+  const data = result.data;
+  const quantity = (value: number | null, unit: string) => value === null ? "Unavailable" : `${formatNumber(value)} ${unit}`;
+  return <div className="workspace"><PageHeading title="Workouts" description="Reported session totals for the year through your latest workout." />
+    <RequestStatus {...result} />
+    {data && <>
+      <section className="stats"><Stat label="Sessions" value={formatNumber(data.total_workouts, 0)} icon={Dumbbell} /><Stat label="Duration" value={quantity(data.total_duration_hours, "h")} /><Stat label="Distance" value={quantity(data.total_distance_km, "km")} /><Stat label="Energy" value={quantity(data.total_energy_kcal, "kcal")} /></section>
+      <section className="panel"><header className="panel-heading"><div><h2>Weekly duration</h2><p>Reported values with compatible units</p></div></header>
+        <LineChart points={data.weekly.map((p) => ({ date: p.date, value: p.duration_hours }))} label="Weekly reported workout duration" unit="h" grain="week" /></section>
+      <section className="panel"><h2>Workout types</h2><DataTable headings={["Workout type", "Sessions", "Hours"]} rows={data.by_type.map((p) => [p.label, String(p.count), formatNumber(p.duration_hours)])} /></section>
+      <section className="panel"><h2>Recent sessions</h2><DataTable headings={["Date", "Type", "Source", "Duration", "Distance", "Energy", "Average HR"]} rows={data.sessions.map((session) => [
+        formatDate(session.start), session.label, session.source ?? "Unknown source", quantity(session.hours, "h"),
+        quantity(session.km, "km"), quantity(session.kcal, "kcal"), quantity(session.bpm, "bpm"),
+      ])} /></section>
+    </>}
+  </div>;
+}
+
+function RingsPage({ revision }: { revision: number }) {
+  const result = useRequest(getRings, `rings-${revision}`);
+  return <div className="workspace"><PageHeading title="Activity rings" description="Apple Activity summaries for the 90 days through your latest ring day." />
+    <RequestStatus {...result} />
+    {result.data && <section className="panel"><header className="panel-heading"><div><h2>Move energy</h2><p>Recorded summaries</p></div></header>
+      <LineChart points={result.data.map((p) => ({ date: p.date, value: p.active_energy_kcal }))} label="Move energy" unit="kcal" />
+      <DataTable headings={["Date", "Move (kcal)", "Exercise (min)", "Stand (h)"]} rows={result.data.slice().reverse().map((p) => [
+        formatDate(p.date), `${formatNumber(p.active_energy_kcal)} / ${formatNumber(p.active_energy_goal_kcal)}`,
+        `${formatNumber(p.exercise_minutes)} / ${formatNumber(p.exercise_goal_minutes)}`,
+        `${formatNumber(p.stand_hours)} / ${formatNumber(p.stand_goal_hours)}`,
+      ])} />
+    </section>}
+  </div>;
 }
 
 function SettingsPage({ overview }: { overview: Overview }) {
-  return <section className="page-stack"><div className="page-intro"><p className="eyebrow">Settings and privacy</p><h2>Your analysis stays under your control.</h2><p>The current build is local-only. It does not require an account or send Apple Health exports to a hosted service.</p></div><section className="analysis-card"><DataTable headings={["Setting", "Current value"]} rows={[["Network mode", "Local-only"], ["Database", overview.database_path], ["Imported observations", overview.record_count.toLocaleString()], ["Medical status", "Not a medical device or diagnostic tool"]]} /></section><section className="empty-panel"><Bot size={20} aria-hidden="true" /><div><strong>Assistant migration note</strong><p>The legacy cloud-backed health chat is intentionally not carried into the new frontend. A future assistant must be opt-in, transparent about every external request, and safe for private health data.</p></div></section></section>;
+  return <div className="workspace"><PageHeading title="Privacy" description="Manage the files that power your local analysis." />
+    <section className="panel privacy-panel"><h2>Profile storage</h2><p>Imported observations and source metadata stay in a DuckDB file on this computer.</p>
+      <code>{overview.database_path}</code>
+      <h2>Remove local data</h2><p>Stop the app, then run <code>python -m apple_health_dashboard.cli clear --yes</code> from the directory where you started it. This removes the database, write-ahead log and staged previews. Keep a separate copy of any export you want to retain.</p>
+      <h2>Temporary exports</h2><p>Previews expire after 30 minutes. Cancelling a preview removes its staged copy. An unexpected shutdown can leave staging files on disk until you clear them.</p>
+    </section>
+  </div>;
 }
 
-function DataTable({ headings, rows }: { headings: string[]; rows: string[][] }) {
-  if (!rows.length) return <section className="empty-panel">No data is available for this selection.</section>;
-  return <div className="table-wrap"><table><thead><tr>{headings.map((heading) => <th key={heading}>{heading}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={`${row.join("-")}-${index}`}>{row.map((value, cellIndex) => <td key={`${value}-${cellIndex}`}>{value}</td>)}</tr>)}</tbody></table></div>;
-}
-
-function friendlyMetric(recordType: string): string {
-  return recordType.replace(/^HK(?:Quantity|Category|Correlation|Characteristic)TypeIdentifier/, "").replace(/([a-z])([A-Z])/g, "$1 $2");
-}
+type ImportState = { status: "idle" | "previewing" | "importing"; message?: string }
+  | { status: "reviewing"; preview: ImportPreview } | { status: "error"; message: string };
 
 export function App() {
-  const [state, setState] = useState<LoadState>("loading");
-  const [overview, setOverview] = useState<Overview | null>(null);
-  const [types, setTypes] = useState<AvailableType[]>([]);
-  const [importState, setImportState] = useState<ImportState>("idle");
-  const [stagedImport, setStagedImport] = useState<ImportPreview | null>(null);
-  const [importMessage, setImportMessage] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const reload = async () => { await getHealth(); const [nextOverview, nextTypes] = await Promise.all([getOverview(), getAvailableTypes().catch(() => [])]); setOverview(nextOverview); setTypes(nextTypes); };
-  useEffect(() => { void reload().then(() => setState("ready")).catch(() => setState("error")); }, []);
-  async function selectExport(file: File | undefined) { if (!file) return; setImportState("previewing"); setImportMessage(null); try { setStagedImport(await previewImport(file)); setImportState("reviewing"); } catch (error) { setImportState("error"); setImportMessage(error instanceof Error ? error.message : "The selected export could not be inspected."); } }
-  async function importExport() { if (!stagedImport) return; setImportState("importing"); setImportMessage(null); try { const result = await confirmImport(stagedImport.ticket_id); await reload(); setImportMessage(`${result.records_inserted.toLocaleString()} new observations imported locally.`); setStagedImport(null); setImportState("idle"); } catch (error) { setImportState("error"); setImportMessage(error instanceof Error ? error.message : "The export could not be imported safely."); } }
-  return <div className="app-shell"><aside className="sidebar" aria-label="Primary navigation"><Link className="brand" to="/"><span className="brand-mark"><HeartPulse size={20} aria-hidden="true" /></span><span>Apple Health Analyzer</span></Link><nav>{navigation.map(({ to, label, icon: Icon, end }) => <NavLink className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} to={to} end={end} key={to}><Icon size={16} aria-hidden="true" /> {label}</NavLink>)}<NavLink className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} to="/rings">Rings</NavLink></nav><div className="sidebar-footer"><span className="local-status"><LockKeyhole size={14} aria-hidden="true" /> Local-only</span><a href="/api/docs">API documentation</a></div></aside><main className="content"><header className="topbar"><div><p className="eyebrow">Your health data, under your control</p><h1>Clear signals, honest context.</h1></div><button className="profile-button" type="button"><UserRound size={18} aria-hidden="true" /> Default profile</button></header>{state === "loading" && <section className="notice">Loading local profile...</section>}{state === "error" && <section className="notice error">The local API is unavailable. Start it with <code>apple-health serve</code> and refresh this page.</section>}{state === "ready" && overview && <><input ref={fileInputRef} className="visually-hidden" accept=".xml,.zip,application/xml,application/zip" type="file" onChange={(event) => void selectExport(event.target.files?.[0])} />{importState === "previewing" && <section className="notice">Inspecting your export locally...</section>}{importState === "importing" && <section className="notice">Importing your export locally. This can take a few minutes for large histories.</section>}{importState === "error" && importMessage && <section className="notice error">{importMessage}</section>}{importState === "reviewing" && stagedImport && <section className="import-review"><div><p className="eyebrow">Review local import</p><h2>Ready to import {stagedImport.file_name}</h2><p>{stagedImport.record_count.toLocaleString()} observations, {stagedImport.workout_count.toLocaleString()} workouts, and {stagedImport.record_type_count.toLocaleString()} record types were found. The file is staged only on this device.</p></div><div className="import-actions"><button className="secondary-action" type="button" onClick={() => { setStagedImport(null); setImportState("idle"); }}>Cancel</button><button className="primary-action" type="button" onClick={() => void importExport()}>Confirm local import <ArrowRight size={16} aria-hidden="true" /></button></div></section>}{importMessage && importState === "idle" && <section className="notice success">{importMessage}</section>}<Routes><Route path="/" element={<OverviewPage overview={overview} onImport={() => fileInputRef.current?.click()} />} /><Route path="/metrics/:category" element={<MetricPage types={types} />} /><Route path="/sleep" element={<SleepPage />} /><Route path="/workouts" element={<WorkoutsPage />} /><Route path="/rings" element={<RingsPage />} /><Route path="/explore" element={<ExplorerPage types={types} />} /><Route path="/settings" element={<SettingsPage overview={overview} />} /><Route path="*" element={<OverviewPage overview={overview} onImport={() => fileInputRef.current?.click()} />} /></Routes></>}</main></div>;
+  const [revision, setRevision] = useState(0);
+  const [stage, setStage] = useState<ImportState>({ status: "idle" });
+  const [theme, setTheme] = useState(() => localStorage.getItem("health-theme") ?? "system");
+  const input = useRef<HTMLInputElement>(null);
+  const location = useLocation();
+  const [menu, setMenu] = useState(false);
+
+  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("health-theme", theme); }, [theme]);
+  useEffect(() => { setMenu(false); }, [location.pathname]);
+  const profile = useRequest(async () => {
+    const overview = await getOverview();
+    return { overview, types: overview.has_data && overview.record_count ? await getAvailableTypes() : [] };
+  }, String(revision));
+  const busy = stage.status === "previewing" || stage.status === "importing" || stage.status === "reviewing";
+  const select = async (file: File) => {
+    setStage({ status: "previewing" });
+    try { setStage({ status: "reviewing", preview: await previewImport(file) }); }
+    catch (error) { setStage({ status: "error", message: (error as Error).message }); }
+  };
+  const demo = async () => {
+    setStage({ status: "previewing" });
+    try {
+      const response = await fetch(demoUrl);
+      if (!response.ok) throw new Error("The synthetic demo could not be opened.");
+      await select(new File([await response.blob()], "synthetic-demo.xml", { type: "application/xml" }));
+    } catch (error) { setStage({ status: "error", message: (error as Error).message }); }
+  };
+  const confirm = async (ticket: string) => {
+    setStage({ status: "importing" });
+    try {
+      const result = await confirmImport(ticket);
+      setRevision((value) => value + 1);
+      const message = `${formatNumber(result.records_inserted, 0)} observations, ${result.workouts_inserted} workouts and ${result.activity_summaries_inserted} ring days added.`;
+      setStage({ status: "idle", message: result.entries_skipped ? `${message} ${result.entries_skipped} incomplete entries skipped.` : message });
+    } catch (error) { setStage({ status: "error", message: (error as Error).message }); }
+  };
+  const cancel = async (ticket: string) => {
+    setStage({ status: "idle" });
+    try { await discardImport(ticket); }
+    catch (error) { setStage({ status: "error", message: (error as Error).message }); }
+  };
+  const openImport = () => input.current?.click();
+
+  return <div className="shell">
+    <a className="skip-link" href="#workspace">Skip to content</a>
+    <aside className="sidebar">
+      <div className="sidebar-top"><Link to="/" className="brand"><span><Activity size={21} aria-hidden="true" /></span><div>Health Analyzer<small>APPLE HEALTH WORKSPACE</small></div></Link>
+        <button className="button subtle mobile-nav" aria-expanded={menu} aria-controls="workspace-nav" onClick={() => setMenu(!menu)}>Menu</button></div>
+      <nav id="workspace-nav" className={menu ? "nav is-open" : "nav"} aria-label="Workspace">
+        {nav.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} end={to === "/"}><Icon size={18} aria-hidden="true" />{label}</NavLink>)}
+      </nav>
+      <div className="sidebar-bottom"><LockKeyhole size={15} aria-hidden="true" /> Local storage</div>
+    </aside>
+    <div className="main-shell">
+      <header className="toolbar">
+        <span>Workspace</span>
+        <div className="actions">
+          <label className="theme-picker">{theme === "dark" ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}<span className="sr-only">Theme</span>
+            <select value={theme} onChange={(e) => setTheme(e.target.value)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+          <button type="button" className="button primary" onClick={openImport} disabled={busy}><Upload size={16} aria-hidden="true" /> Import export</button>
+        </div>
+      </header>
+      <main id="workspace" className="main" tabIndex={-1}>
+        <input ref={input} type="file" className="sr-only" tabIndex={-1} aria-label="Select Apple Health export" accept=".xml,.zip,application/xml,application/zip" onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) void select(file);
+        }} />
+        {stage.status === "previewing" && <p role="status" className="notice">Inspecting your export…</p>}
+        {stage.status === "importing" && <p role="status" className="notice">Importing locally. Large exports may take several minutes.</p>}
+        {stage.status === "error" && <p role="alert" className="notice error">{stage.message}</p>}
+        {stage.status === "idle" && stage.message && <p role="status" className="notice">{stage.message}</p>}
+        {stage.status === "reviewing" && <section className="panel import-review" aria-labelledby="review-heading">
+          <div><h2 id="review-heading">Review import</h2><p>{stage.preview.file_name}</p><p>{formatNumber(stage.preview.record_count, 0)} observations · {stage.preview.workout_count} workouts · {stage.preview.activity_summary_count} ring days</p></div>
+          <div className="actions"><button className="button subtle" onClick={() => void cancel(stage.preview.ticket_id)}>Cancel</button><button className="button primary" onClick={() => void confirm(stage.preview.ticket_id)}>Confirm import <ArrowRight size={16} aria-hidden="true" /></button></div>
+        </section>}
+        <RequestStatus {...profile} />
+        {profile.error && <button className="button subtle" onClick={() => setRevision((value) => value + 1)}>Retry local connection</button>}
+        {profile.data && <Routes>
+          <Route index element={<OverviewPage {...profile.data} revision={revision} onImport={openImport} onDemo={() => void demo()} busy={busy} />} />
+          <Route path="metrics/:category" element={<MetricPage types={profile.data.types} revision={revision} />} />
+          <Route path="sleep" element={profile.data.overview.has_data ? <SleepPage revision={revision} /> : <EmptyPage title="Sleep" />} />
+          <Route path="workouts" element={profile.data.overview.has_data ? <WorkoutsPage revision={revision} /> : <EmptyPage title="Workouts" />} />
+          <Route path="rings" element={profile.data.overview.has_data ? <RingsPage revision={revision} /> : <EmptyPage title="Activity rings" />} />
+          <Route path="explore" element={<div className="workspace"><PageHeading title="Data Explorer" description="Compare trends, inspect source observations, and export your selected series." />
+            <Explorer types={profile.data.types} revision={revision} /></div>} />
+          <Route path="settings" element={<SettingsPage overview={profile.data.overview} />} />
+          <Route path="*" element={<EmptyPage title="Page unavailable" />} />
+        </Routes>}
+      </main>
+    </div>
+  </div>;
+}
+
+function EmptyPage({ title }: { title: string }) {
+  return <div className="workspace"><PageHeading title={title} description="Open the overview to import or inspect your profile." />
+    <Link className="text-link" to="/"><CircleHelp size={17} aria-hidden="true" /> Open overview</Link></div>;
 }

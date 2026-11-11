@@ -75,3 +75,9 @@ Desktop.ini
 # --- JavaScript / frontend ---
 frontend/node_modules/
 frontend/dist/
+
+*.tsbuildinfo
+frontend/test-results/
+frontend/playwright-report/
+*.duckdb.wal
+*.duckdb.tmp/

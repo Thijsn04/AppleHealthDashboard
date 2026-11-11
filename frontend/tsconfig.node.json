@@ -1,11 +1,13 @@
 {
   "compilerOptions": {
-    "composite": true,
-    "lib": ["ESNext"],
+    "noEmit": true,
+    "strict": true,
+    "lib": ["ESNext", "DOM"],
+    "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "allowSyntheticDefaultImports": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "playwright.config.ts", "tests/**/*.ts"]
 }

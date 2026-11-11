@@ -1,3 +1,5 @@
+import type { Grain } from "./ui";
+
 export type HealthStatus = {
   status: string;
   version: string;
@@ -29,6 +31,7 @@ export type ImportPreview = {
 };
 
 export type ImportResult = {
+  entries_skipped: number;
   records_inserted: number;
   record_metadata_inserted: number;
   activity_summaries_inserted: number;
@@ -41,13 +44,22 @@ export type AvailableType = {
   label: string;
   category: string;
   count: number;
+  chartable: boolean;
+  sources: (string | null)[];
+  numeric_count: number;
+  first_day: string;
+  last_day: string;
   first_record_at: string | null;
   last_record_at: string | null;
   unit: string | null;
 };
 
 export type SeriesPoint = { date: string; value: number; unit: string | null; sample_count: number };
-export type MetricSeries = { record_type: string; aggregation: string; points: SeriesPoint[] };
+export type MetricSeries = {
+  record_type: string; aggregation: string; grain: Grain; points: SeriesPoint[];
+  excluded_samples: number; legacy_samples: number; sources: (string | null)[];
+};
+export type Filters = { start?: string; end?: string; grain?: Grain; source?: string };
 export type SleepSummary = {
   average_hours: number | null;
   night_count: number;
@@ -56,11 +68,12 @@ export type SleepSummary = {
 };
 export type WorkoutSummary = {
   total_workouts: number;
-  total_duration_hours: number;
-  total_distance_km: number;
-  total_energy_kcal: number;
-  weekly: { date: string; count: number; duration_hours: number }[];
-  by_type: { label: string; count: number; duration_hours: number }[];
+  total_duration_hours: number | null;
+  total_distance_km: number | null;
+  total_energy_kcal: number | null;
+  weekly: { date: string; count: number; duration_hours: number | null }[];
+  by_type: { label: string; count: number; duration_hours: number | null }[];
+  sessions: { start: string; label: string; source: string | null; hours: number | null; km: number | null; kcal: number | null; bpm: number | null }[];
 };
 export type RingDay = {
   date: string;
@@ -75,7 +88,7 @@ export type RecordPage = {
   total: number;
   offset: number;
   limit: number;
-  items: { record_type: string; start_at: string; end_at: string; source_name: string | null; unit: string | null; value: number | null; value_str: string | null }[];
+  items: { record_type: string; start_at: string; end_at: string; source_name: string | null; unit: string | null; value: number | null; value_str: string | null; device: string | null; source_version: string | null; legacy_timestamp: boolean }[];
 };
 
 async function request<T>(path: string): Promise<T> {
@@ -90,16 +103,31 @@ async function request<T>(path: string): Promise<T> {
 export const getHealth = () => request<HealthStatus>("/api/v1/health");
 export const getOverview = () => request<Overview>("/api/v1/overview");
 export const getAvailableTypes = () => request<AvailableType[]>("/api/v1/analytics/types");
-export const getMetricSeries = (recordType: string, days?: number) =>
-  request<MetricSeries>(`/api/v1/analytics/metrics/${encodeURIComponent(recordType)}/series${days ? `?days=${days}` : ""}`);
+function query(filters: Filters) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined) params.set(key, value);
+  }
+  return params;
+}
+
+export const getMetricSeries = (recordType: string, filters: Filters = {}) =>
+  request<MetricSeries>(`/api/v1/analytics/metrics/${encodeURIComponent(recordType)}/series?${query(filters)}`);
 export const getSleepSummary = () => request<SleepSummary>("/api/v1/analytics/sleep");
 export const getWorkoutSummary = () => request<WorkoutSummary>("/api/v1/analytics/workouts");
 export const getRings = () => request<RingDay[]>("/api/v1/analytics/rings");
-export const getRecords = (recordType: string | undefined, offset = 0) => {
-  const search = new URLSearchParams({ offset: String(offset), limit: "50" });
+export const getRecords = (recordType: string | undefined, offset = 0, filters: Filters = {}) => {
+  const search = query(filters);
+  search.set("offset", String(offset));
+  search.set("limit", "50");
   if (recordType) search.set("record_type", recordType);
-  return request<RecordPage>(`/api/v1/analytics/records?${search.toString()}`);
+  return request<RecordPage>(`/api/v1/analytics/records?${search}`);
 };
+
+export async function discardImport(ticketId: string) {
+  const response = await fetch(`/api/v1/imports/${encodeURIComponent(ticketId)}`, { method: "DELETE" });
+  if (!response.ok) throw new Error("The preview could not be discarded. It expires automatically.");
+}
 
 export async function previewImport(file: File): Promise<ImportPreview> {
   const formData = new FormData();
