@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are applied to the current `main` branch while the project is pre-1.0.
+Security fixes are applied to the current `master` branch while the project is pre-1.0.
 
 ## Reporting a vulnerability
 
@@ -20,7 +20,7 @@ We will acknowledge reports, investigate privately, and coordinate a fix before 
 ## Security boundaries
 
 - The analyzer is designed for local use on a trusted device.
-- The API binds to loopback by default. It is not a multi-user or internet-facing service.
+- The supported CLI binds to loopback. It is not a multi-user or internet-facing service.
 - Apple Health exports, local databases, logs, and imported metadata can contain highly sensitive data.
 - Archive input is untrusted input. Import code must validate file type, size, compression ratio, paths, and XML structure.
 - Any future AI integration must show users exactly what leaves the device and require explicit per-feature consent.

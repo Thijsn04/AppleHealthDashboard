@@ -1,40 +1,13 @@
-# Privacy and data handling
+# Privacy and deletion
 
-## Default data flow
+The analyzer runs on loopback and keeps imported data in `health.duckdb` in the server's working directory. ZIP extraction and pending previews use `.tmp/api-imports/`. DuckDB can create a write-ahead log and a spill directory beside the profile. The normal application uses local HTTP requests, has no account, and sends no health observations to external services.
 
-```text
-Your Apple Health export
-        |
-        v
-Local validation and import
-        |
-        v
-Local DuckDB database
-        |
-        v
-Local API at 127.0.0.1
-        |
-        v
-Local browser frontend
+Previews expire after 30 minutes, with periodic cleanup. Cancellation and graceful shutdown remove staged copies. An unexpected process termination can leave temporary files on disk. Original exports, downloaded CSVs, backups and synced copies are separate from the app's files.
+
+To remove application-managed files, stop the server and run the following from the server's working directory.
+
+```sh
+python -m apple_health_dashboard.cli clear --yes
 ```
 
-No account, cloud database, telemetry service, or remote analytics service is required by the target architecture.
-
-## Sensitive data
-
-An export can reveal health conditions, fertility and cycle information, medication patterns, sleep schedules, exercise habits, location, source-device details, and timestamps. Treat the export and the generated database as sensitive files.
-
-## Network policy
-
-- The local API binds to loopback by default.
-- The target frontend ships without remote fonts, trackers, or analytics.
-- Any future network feature must name the destination, data categories, reason, retention policy, and consent control.
-- AI features require deliberate opt-in, a data preview, and a way to revoke or delete local conversation history.
-
-## Data retention and deletion
-
-The importer must show the storage location and provide a clear local-data deletion flow. Deletion should remove application-managed databases, temporary import files, derived datasets, and logs when the user requests it. Documentation must distinguish normal file deletion from secure erasure guarantees.
-
-## Local deployment warning
-
-The API is not intended to be exposed to a LAN or the public internet. If a developer changes the bind address, they are responsible for authentication, TLS, authorization, and operating-system hardening.
+This is normal file deletion. Use a working directory outside cloud-synchronized storage and operating-system permissions appropriate for sensitive files. Keep backups in a location you control.

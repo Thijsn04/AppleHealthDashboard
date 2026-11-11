@@ -15,13 +15,13 @@ Thank you for improving a private and transparent way to understand Apple Health
 
 ```powershell
 python -m pip install -e ".[dev]"
-npm --prefix frontend install
+npm --prefix frontend ci
 python -m pytest
 python -m ruff check .
 npm --prefix frontend run build
 ```
 
-Run the API with `apple-health serve`. Run the frontend with `npm --prefix frontend run dev`.
+Run the built app with `python -m apple_health_dashboard.cli serve`. Start `npm --prefix frontend run dev` for Vite development. See the [testing guide](docs/TESTING.md) for browser verification.
 
 ## Architecture boundaries
 
