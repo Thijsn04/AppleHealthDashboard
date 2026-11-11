@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from threading import Lock
 
 import duckdb
 
-from apple_health_dashboard.ingest.apple_health_activity_summary import (
-    iter_activity_summaries_from_export_xml,
-)
-from apple_health_dashboard.ingest.apple_health_records import iter_records_from_export_xml
-from apple_health_dashboard.ingest.apple_health_workouts import iter_workouts_from_export_xml
+from apple_health_dashboard.ingest.apple_health_activity_summary import parse_activity_summary
+from apple_health_dashboard.ingest.apple_health_records import parse_records
+from apple_health_dashboard.ingest.apple_health_workouts import parse_workouts
+from apple_health_dashboard.ingest.xml_stream import export_elements
 from apple_health_dashboard.storage.duckdb_store import (
     init_db,
     open_db,
@@ -19,6 +19,7 @@ from apple_health_dashboard.storage.duckdb_store import (
     upsert_workouts,
 )
 
+_IMPORT_LOCK = Lock()
 _COUNTED_TABLES = (
     "health_record",
     "record_metadata",
@@ -58,118 +59,91 @@ def import_export_xml_to_duckdb_all(
     Returned counts represent rows actually added during this import. Re-importing an
     unchanged export therefore reports zero newly inserted rows.
     """
-    con = open_db(db_path)
-    try:
-        init_db(con)
-        counts_before = _table_counts(con)
-        con.execute("BEGIN TRANSACTION")
+    if min(record_batch_size, workout_batch_size) < 1:
+        raise ValueError("Import batches must contain at least one row.")
+    with _IMPORT_LOCK:
+        con = open_db(db_path)
         try:
-            _import_records(con, export_xml_path, record_batch_size, on_progress)
-            _import_activity_summaries(con, export_xml_path)
-            _import_workouts(con, export_xml_path, workout_batch_size, on_progress)
-            con.execute("COMMIT")
-        except Exception:
-            con.execute("ROLLBACK")
-            raise
+            init_db(con)
+            con.execute("BEGIN TRANSACTION")
+            try:
+                counts_before = _table_counts(con)
+                skipped = _import_elements(con, export_xml_path, record_batch_size, workout_batch_size, on_progress)
+                counts_after = _table_counts(con)
+                con.execute("COMMIT")
+            except Exception:
+                con.execute("ROLLBACK")
+                raise
 
-        counts_after = _table_counts(con)
-        return {
-            "records_inserted": counts_after["health_record"] - counts_before["health_record"],
-            "record_metadata_inserted": counts_after["record_metadata"] - counts_before["record_metadata"],
-            "activity_summaries_inserted": counts_after["activity_summary"] - counts_before["activity_summary"],
-            "workouts_inserted": counts_after["workout"] - counts_before["workout"],
-            "workout_metadata_inserted": counts_after["workout_metadata"] - counts_before["workout_metadata"],
-        }
-    finally:
-        con.close()
+            return {
+                "entries_skipped": skipped,
+                "records_inserted": counts_after["health_record"] - counts_before["health_record"],
+                "record_metadata_inserted": counts_after["record_metadata"] - counts_before["record_metadata"],
+                "activity_summaries_inserted": counts_after["activity_summary"] - counts_before["activity_summary"],
+                "workouts_inserted": counts_after["workout"] - counts_before["workout"],
+                "workout_metadata_inserted": counts_after["workout_metadata"] - counts_before["workout_metadata"],
+            }
+        finally:
+            con.close()
 
 
-def _import_records(
-    con: duckdb.DuckDBPyConnection,
-    export_xml_path: Path,
-    batch_size: int,
-    on_progress: Callable[[str, int], None] | None,
-) -> None:
-    from apple_health_dashboard.ingest.apple_health import HealthRecord
+def _import_elements(con, export_xml_path, record_batch_size, workout_batch_size, on_progress) -> int:
+    records, record_metadata, workouts, workout_metadata, rings = [], [], [], [], []
+    processed_records = processed_workouts = skipped = 0
+    for element in export_elements(export_xml_path):
+        if element.tag == "Record":
+            parsed = parse_records(element)
+            if parsed is None:
+                skipped += 1
+                continue
+            record, metadata = parsed
+            records.append(record)
+            record_metadata.extend((m.record_hash, m.key, m.value) for m in metadata)
+            processed_records += 1
+            if len(records) >= record_batch_size:
+                upsert_records(con, records)
+                upsert_record_metadata(con, record_metadata)
+                records.clear()
+                record_metadata.clear()
+                if on_progress:
+                    on_progress("records", processed_records)
+        elif element.tag == "Workout":
+            parsed = parse_workouts(element)
+            if parsed is None:
+                skipped += 1
+                continue
+            workout, metadata = parsed
+            workouts.append(workout)
+            workout_metadata.extend(metadata)
+            processed_workouts += 1
+            if len(workouts) >= workout_batch_size:
+                upsert_workouts(con, workouts, workout_metadata)
+                workouts.clear()
+                workout_metadata.clear()
+                if on_progress:
+                    on_progress("workouts", processed_workouts)
+        elif element.tag == "ActivitySummary":
+            summary = parse_activity_summary(element)
+            if summary is None:
+                skipped += 1
+                continue
+            rings.append((
+                summary.day.isoformat(), summary.active_energy_burned_kcal,
+                summary.active_energy_burned_goal_kcal, summary.apple_exercise_time_min,
+                summary.apple_exercise_time_goal_min, summary.apple_stand_hours, summary.apple_stand_hours_goal,
+            ))
+            if len(rings) >= 365:
+                upsert_activity_summaries(con, rings)
+                rings.clear()
 
-    processed = 0
-    records: list[HealthRecord] = []
-    metadata_rows: list[tuple[str, str, str]] = []
-    for record, metadata in iter_records_from_export_xml(export_xml_path):
-        records.append(
-            HealthRecord(
-                type=record.record_type,
-                start_at=record.start_at,
-                end_at=record.end_at,
-                creation_at=record.creation_at,
-                source_name=record.source_name,
-                unit=record.unit,
-                value=record.value,
-                value_str=record.value_str,
-            )
-        )
-        metadata_rows.extend((item.record_hash, item.key, item.value) for item in metadata)
-        processed += 1
-        if on_progress and processed % 500 == 0:
-            on_progress("records", processed)
-        if len(records) >= batch_size:
-            upsert_records(con, records)
-            upsert_record_metadata(con, metadata_rows)
-            records.clear()
-            metadata_rows.clear()
-
-    if records or metadata_rows:
-        upsert_records(con, records)
-        upsert_record_metadata(con, metadata_rows)
+    upsert_records(con, records)
+    upsert_record_metadata(con, record_metadata)
+    upsert_workouts(con, workouts, workout_metadata)
+    upsert_activity_summaries(con, rings)
     if on_progress:
-        on_progress("records", processed)
-
-
-def _import_activity_summaries(con: duckdb.DuckDBPyConnection, export_xml_path: Path) -> None:
-    rows = []
-    for summary in iter_activity_summaries_from_export_xml(export_xml_path):
-        rows.append(
-            (
-                summary.day.isoformat(),
-                summary.active_energy_burned_kcal,
-                summary.active_energy_burned_goal_kcal,
-                summary.apple_exercise_time_min,
-                summary.apple_exercise_time_goal_min,
-                summary.apple_stand_hours,
-                summary.apple_stand_hours_goal,
-            )
-        )
-        if len(rows) >= 365:
-            upsert_activity_summaries(con, rows)
-            rows.clear()
-    if rows:
-        upsert_activity_summaries(con, rows)
-
-
-def _import_workouts(
-    con: duckdb.DuckDBPyConnection,
-    export_xml_path: Path,
-    batch_size: int,
-    on_progress: Callable[[str, int], None] | None,
-) -> None:
-    processed = 0
-    workouts = []
-    metadata_rows = []
-    for workout, metadata in iter_workouts_from_export_xml(export_xml_path):
-        workouts.append(workout)
-        metadata_rows.extend(metadata)
-        processed += 1
-        if on_progress and processed % 50 == 0:
-            on_progress("workouts", processed)
-        if len(workouts) >= batch_size:
-            upsert_workouts(con, workouts, metadata_rows)
-            workouts.clear()
-            metadata_rows.clear()
-
-    if workouts or metadata_rows:
-        upsert_workouts(con, workouts, metadata_rows)
-    if on_progress:
-        on_progress("workouts", processed)
+        on_progress("records", processed_records)
+        on_progress("workouts", processed_workouts)
+    return skipped
 
 
 def _table_counts(con: duckdb.DuckDBPyConnection) -> dict[str, int]:

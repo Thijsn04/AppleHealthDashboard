@@ -6,7 +6,11 @@ import hashlib
 import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path, PurePosixPath
+
+from apple_health_dashboard.ingest.apple_health_records import _parse_apple_datetime
+from apple_health_dashboard.ingest.xml_stream import export_elements
 
 
 class ImportValidationError(ValueError):
@@ -95,25 +99,30 @@ def preview_export(xml_path: Path) -> ExportPreview:
     workout_count = 0
     activity_summary_count = 0
     record_types: set[str] = set()
-    earliest_start: str | None = None
-    latest_end: str | None = None
+    earliest: tuple[datetime, str] | None = None
+    latest: tuple[datetime, str] | None = None
 
     try:
-        context = ET.iterparse(xml_path, events=("end",))
-        for _event, element in context:
+        for element in export_elements(xml_path):
             if element.tag == "Record":
                 record_count += 1
                 record_type = element.attrib.get("type")
                 if record_type:
                     record_types.add(record_type)
-                earliest_start = _earlier(earliest_start, element.attrib.get("startDate"))
-                latest_end = _later(latest_end, element.attrib.get("endDate"))
             elif element.tag == "Workout":
                 workout_count += 1
             elif element.tag == "ActivitySummary":
                 activity_summary_count += 1
-            element.clear()
-    except ET.ParseError as exc:
+            if element.tag in {"Record", "Workout"}:
+                if raw_start := element.get("startDate"):
+                    instant = _parse_apple_datetime(raw_start)
+                    if earliest is None or instant < earliest[0]:
+                        earliest = (instant, raw_start)
+                if raw_end := element.get("endDate"):
+                    instant = _parse_apple_datetime(raw_end)
+                    if latest is None or instant > latest[0]:
+                        latest = (instant, raw_end)
+    except (ET.ParseError, ValueError) as exc:
         raise ImportValidationError("The export XML is malformed or incomplete.") from exc
 
     return ExportPreview(
@@ -121,8 +130,8 @@ def preview_export(xml_path: Path) -> ExportPreview:
         workout_count=workout_count,
         activity_summary_count=activity_summary_count,
         record_type_count=len(record_types),
-        earliest_start=earliest_start,
-        latest_end=latest_end,
+        earliest_start=earliest[1] if earliest else None,
+        latest_end=latest[1] if latest else None,
     )
 
 
@@ -167,14 +176,3 @@ def _sha256_file(path: Path) -> str:
         while chunk := source.read(1_048_576):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def _earlier(current: str | None, candidate: str | None) -> str | None:
-    if candidate is None or (current is not None and candidate >= current):
-        return current
-    return candidate
-
-
-def _later(current: str | None, candidate: str | None) -> str | None:
-    if candidate is None or (current is not None and candidate <= current):
-        return current

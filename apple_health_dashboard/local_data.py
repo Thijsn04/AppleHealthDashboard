@@ -13,18 +13,10 @@ def local_db_path() -> Path:
 
 
 def delete_local_data() -> None:
-    """Delete local-only data artifacts.
-
-    Removes:
-      - ./health.duckdb
-      - ./.tmp/
-
-    Safe to call even if they don't exist.
-    """
+    """Remove the database and API staging files with the app stopped."""
     db = local_db_path()
-    if db.exists():
-        db.unlink()
-
-    tmp = local_tmp_dir()
-    if tmp.exists():
-        shutil.rmtree(tmp, ignore_errors=True)
+    db.unlink(missing_ok=True)
+    db.with_suffix(".duckdb.wal").unlink(missing_ok=True)
+    staging = local_tmp_dir() / "api-imports"
+    if staging.exists():
+        shutil.rmtree(staging)

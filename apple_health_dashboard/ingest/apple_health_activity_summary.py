@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from xml.etree.ElementTree import Element
+
+from apple_health_dashboard.ingest.xml_stream import export_elements
 
 
 def _to_int(value: str | None) -> int | None:
@@ -12,7 +14,7 @@ def _to_int(value: str | None) -> int | None:
         return None
     try:
         return int(float(value))
-    except ValueError:
+    except (ValueError, OverflowError):
         return None
 
 
@@ -35,25 +37,23 @@ class ActivitySummary:
 def iter_activity_summaries_from_export_xml(export_xml_path: Path) -> Iterator[ActivitySummary]:
     """Stream <ActivitySummary/> rows from an Apple Health export.xml."""
 
-    context = ET.iterparse(export_xml_path, events=("end",))
-    for _event, elem in context:
-        if elem.tag != "ActivitySummary":
-            continue
+    for element in export_elements(export_xml_path):
+        if element.tag == "ActivitySummary" and (parsed := parse_activity_summary(element)) is not None:
+            yield parsed
 
-        attrib = elem.attrib
-        day = attrib.get("dateComponents")
-        if not day:
-            elem.clear()
-            continue
 
-        yield ActivitySummary(
-            day=_parse_apple_date(day),
-            active_energy_burned_kcal=_to_int(attrib.get("activeEnergyBurned")),
-            active_energy_burned_goal_kcal=_to_int(attrib.get("activeEnergyBurnedGoal")),
-            apple_exercise_time_min=_to_int(attrib.get("appleExerciseTime")),
-            apple_exercise_time_goal_min=_to_int(attrib.get("appleExerciseTimeGoal")),
-            apple_stand_hours=_to_int(attrib.get("appleStandHours")),
-            apple_stand_hours_goal=_to_int(attrib.get("appleStandHoursGoal")),
-        )
+def parse_activity_summary(elem: Element) -> ActivitySummary | None:
+    attrib = elem.attrib
+    day = attrib.get("dateComponents")
+    if not day:
+        return None
 
-        elem.clear()
+    return ActivitySummary(
+        day=_parse_apple_date(day),
+        active_energy_burned_kcal=_to_int(attrib.get("activeEnergyBurned")),
+        active_energy_burned_goal_kcal=_to_int(attrib.get("activeEnergyBurnedGoal")),
+        apple_exercise_time_min=_to_int(attrib.get("appleExerciseTime")),
+        apple_exercise_time_goal_min=_to_int(attrib.get("appleExerciseTimeGoal")),
+        apple_stand_hours=_to_int(attrib.get("appleStandHours")),
+        apple_stand_hours_goal=_to_int(attrib.get("appleStandHoursGoal")),
+    )

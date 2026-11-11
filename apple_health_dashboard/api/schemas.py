@@ -74,6 +74,7 @@ class ImportStartRequest(BaseModel):
 class ImportResultResponse(BaseModel):
     """Counts of newly persisted records from one completed import."""
 
+    entries_skipped: int = Field(default=0, ge=0)
     records_inserted: int = Field(ge=0)
     record_metadata_inserted: int = Field(ge=0)
     activity_summaries_inserted: int = Field(ge=0)

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from uuid import uuid4
 
 from fastapi import UploadFile
@@ -27,6 +29,7 @@ class StagedImport:
     display_name: str
     prepared_export: PreparedExport
     preview: ExportPreview
+    expires_at: float
 
 
 class LocalImportStaging:
@@ -44,25 +47,30 @@ class LocalImportStaging:
         if suffix not in {".xml", ".zip"}:
             raise ImportValidationError("Select an Apple Health export.xml or export.zip file.")
 
-        self._temporary_dir.mkdir(parents=True, exist_ok=True)
-        upload_path = self._temporary_dir / f"upload-{uuid4().hex}{suffix}"
+        ticket_id = uuid4().hex
+        folder = self._temporary_dir / ticket_id
+        folder.mkdir(parents=True)
+        upload_path = folder / f"upload{suffix}"
+        await self.prune()
+
         try:
             await self._write_upload(upload, upload_path)
-            prepared = await asyncio.to_thread(prepare_export, upload_path, self._temporary_dir, limits=self._limits)
+            prepared = await asyncio.to_thread(prepare_export, upload_path, folder, limits=self._limits)
             preview = await asyncio.to_thread(preview_export, prepared.xml_path)
             if prepared.extracted_from_zip:
                 upload_path.unlink(missing_ok=True)
-        except Exception:
-            upload_path.unlink(missing_ok=True)
+        except BaseException:
+            shutil.rmtree(folder, ignore_errors=True)
             raise
         finally:
             await upload.close()
 
         staged = StagedImport(
-            ticket_id=uuid4().hex,
+            ticket_id=ticket_id,
             display_name=Path(upload.filename or "Apple Health export").name,
             prepared_export=prepared,
             preview=preview,
+            expires_at=monotonic() + 1800,
         )
         async with self._lock:
             self._tickets[staged.ticket_id] = staged
@@ -70,12 +78,25 @@ class LocalImportStaging:
 
     async def consume(self, ticket_id: str) -> StagedImport | None:
         """Claim a ticket once so concurrent requests cannot import it twice."""
+        await self.prune()
         async with self._lock:
             return self._tickets.pop(ticket_id, None)
 
+    async def prune(self) -> None:
+        async with self._lock:
+            expired = [key for key, staged in self._tickets.items() if staged.expires_at <= monotonic()]
+            for key in expired:
+                self.discard(self._tickets.pop(key))
+
+    async def close(self) -> None:
+        async with self._lock:
+            for staged in self._tickets.values():
+                self.discard(staged)
+            self._tickets.clear()
+
     def discard(self, staged: StagedImport) -> None:
         """Delete all application-managed temporary data for one staged import."""
-        staged.prepared_export.xml_path.unlink(missing_ok=True)
+        shutil.rmtree(staged.prepared_export.xml_path.parent, ignore_errors=True)
 
     async def _write_upload(self, upload: UploadFile, destination: Path) -> None:
         written = 0

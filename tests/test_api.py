@@ -12,7 +12,7 @@ startDate="2024-01-01 10:00:00 +0000" endDate="2024-01-01 10:05:00 +0000"/></Hea
 
 
 def test_health_endpoint_is_local_only() -> None:
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://localhost")
 
     response = client.get("/api/v1/health")
 
@@ -21,7 +21,7 @@ def test_health_endpoint_is_local_only() -> None:
 
 
 def test_metric_catalog_has_unique_record_types() -> None:
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://localhost")
 
     response = client.get("/api/v1/catalog/metrics")
 
@@ -33,7 +33,7 @@ def test_metric_catalog_has_unique_record_types() -> None:
 
 def test_import_requires_preview_then_explicit_confirmation(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("apple_health_dashboard.api.routes.default_db_path", lambda: tmp_path / "health.duckdb")
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://localhost")
 
     preview = client.post(
         "/api/v1/imports/preview",
@@ -49,7 +49,7 @@ def test_import_requires_preview_then_explicit_confirmation(monkeypatch, tmp_pat
 
 def test_analytics_endpoints_are_bounded_and_use_the_local_import(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("apple_health_dashboard.api.routes.default_db_path", lambda: tmp_path / "health.duckdb")
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://localhost")
     preview = client.post(
         "/api/v1/imports/preview",
         files={"file": ("export.xml", SINGLE_RECORD_XML, "application/xml")},
@@ -67,3 +67,34 @@ def test_analytics_endpoints_are_bounded_and_use_the_local_import(monkeypatch, t
     assert records.json()["total"] == 1
     assert records.json()["items"][0]["value"] == 42
     assert sleep.json() == {"average_hours": None, "night_count": 0, "nightly": [], "stages": []}
+
+
+def test_identical_zip_previews_are_isolated_and_cancelled(tmp_path, monkeypatch):
+    import io
+    import zipfile
+
+    from apple_health_dashboard.api.imports import LocalImportStaging
+
+    monkeypatch.setattr("apple_health_dashboard.api.routes.default_db_path", lambda: tmp_path / "health.duckdb")
+    monkeypatch.setattr("apple_health_dashboard.api.routes._staging", LocalImportStaging(tmp_path / "staging"))
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("apple_health_export/export.xml", SINGLE_RECORD_XML)
+    with TestClient(create_app(), base_url="http://localhost") as client:
+        files = {"file": ("export.zip", payload.getvalue(), "application/zip")}
+        first = client.post("/api/v1/imports/preview", files=files).json()["ticket_id"]
+        second = client.post("/api/v1/imports/preview", files=files).json()["ticket_id"]
+        assert client.delete(f"/api/v1/imports/{first}").status_code == 204
+        assert not (tmp_path / "staging" / first).exists()
+        assert client.post("/api/v1/imports", json={"ticket_id": second}).json()["records_inserted"] == 1
+        assert not (tmp_path / "staging" / second).exists()
+
+
+def test_local_browser_responses_disable_caching_and_validate_ranges():
+    client = TestClient(create_app(), base_url="http://localhost")
+    assert client.get("/api/v1/health").headers["Cache-Control"] == "no-store"
+    response = client.get(
+        "/api/v1/analytics/metrics/HKQuantityTypeIdentifierStepCount/series",
+        params={"start": "2000-01-01", "end": "2025-01-01"},
+    )
+    assert response.status_code == 422

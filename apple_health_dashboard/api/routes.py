@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
+from datetime import date
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import duckdb
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
@@ -71,9 +72,15 @@ def analytics_types() -> list[dict[str, object]]:
 def analytics_metric_series(
     record_type: str,
     days: int | None = Query(default=None, ge=1, le=MAX_SERIES_DAYS),
+    start: date | None = None,
+    end: date | None = None,
+    grain: Literal["day", "week", "month"] = "day",
+    source: str | None = Query(default=None, max_length=1024),
 ) -> dict[str, object]:
-    """Aggregate one metric by day according to its documented catalog policy."""
-    return _analytics_response(metric_series, default_db_path(), record_type, days)
+    """Aggregate one metric into the requested calendar buckets."""
+    if start and (not end or not 0 <= (end - start).days < MAX_SERIES_DAYS):
+        raise HTTPException(status_code=422, detail="Select an ordered date range of at most 3,650 days.")
+    return _analytics_response(metric_series, default_db_path(), record_type, days, start, end, grain, source)
 
 
 @router.get("/analytics/sleep", summary="Get nightly sleep duration and stages")
@@ -105,9 +112,12 @@ def analytics_records(
     record_type: str | None = Query(default=None, max_length=255),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=MAX_PAGE_SIZE),
+    start: date | None = None,
+    end: date | None = None,
+    source: str | None = Query(default=None, max_length=1024),
 ) -> dict[str, object]:
     """Expose paginated source observations for verification and export workflows."""
-    return _analytics_response(paged_records, default_db_path(), record_type, offset, limit)
+    return _analytics_response(paged_records, default_db_path(), record_type, offset, limit, start, end, source)
 
 
 @router.post(
@@ -123,6 +133,13 @@ async def preview_import(file: Annotated[UploadFile, File(...)]) -> ImportPrevie
     except ImportValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _preview_response(staged)
+
+
+@router.delete("/imports/{ticket_id}", status_code=204, summary="Discard an unconfirmed export")
+async def discard_import(ticket_id: str) -> None:
+    staged = await _staging.consume(ticket_id)
+    if staged is not None:
+        _staging.discard(staged)
 
 
 @router.post("/imports", response_model=ImportResultResponse, summary="Confirm a local Apple Health import")
@@ -159,7 +176,7 @@ def overview() -> OverviewResponse:
 
 def _load_overview(db_path: Path) -> OverviewResponse:
     """Load only aggregate database facts required by the landing screen."""
-    con = duckdb.connect(str(db_path), read_only=True)
+    con = duckdb.connect(str(db_path))
     try:
         record_count = int(con.execute("SELECT COUNT(*) FROM health_record").fetchone()[0])
         workout_count = int(con.execute("SELECT COUNT(*) FROM workout").fetchone()[0])
@@ -170,7 +187,7 @@ def _load_overview(db_path: Path) -> OverviewResponse:
         con.close()
 
     return OverviewResponse(
-        has_data=record_count > 0,
+        has_data=bool(record_count or workout_count or ring_day_count),
         database_path=str(db_path),
         record_count=record_count,
         workout_count=workout_count,

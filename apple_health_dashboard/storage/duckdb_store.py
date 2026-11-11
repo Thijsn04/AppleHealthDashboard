@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime
+from math import isfinite
 from pathlib import Path
 
 import duckdb
+import pandas as pd
 
 from apple_health_dashboard.ingest.apple_health import HealthRecord
+from apple_health_dashboard.ingest.apple_health_records import Record, _to_float
+from apple_health_dashboard.ingest.apple_health_records import stable_record_hash as record_hash
 from apple_health_dashboard.ingest.apple_health_workouts import (
     Workout,
     WorkoutMetadata,
     stable_workout_hash,
 )
+from apple_health_dashboard.services.units import UNIT_CONVERSIONS
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS health_record (
@@ -79,9 +83,20 @@ def open_db(db_path: Path) -> duckdb.DuckDBPyConnection:
 
 
 def init_db(con: duckdb.DuckDBPyConnection) -> None:
-    for stmt in _SCHEMA_SQL.strip().split(';'):
-        if stmt.strip():
-            con.execute(stmt)
+    con.execute(_SCHEMA_SQL)
+    for table, columns in {
+        "health_record": {
+            name: "VARCHAR" for name in ("source_start", "source_end", "source_creation", "device", "source_version")
+        },
+        "workout": {
+            **dict.fromkeys(("source_start", "source_end", "source_creation", "duration_unit", "energy_unit", "distance_unit"), "VARCHAR"),
+            **dict.fromkeys(("reported_hours", "reported_km", "reported_kcal", "reported_bpm"), "DOUBLE"),
+        },
+    }.items():
+        existing = {row[1] for row in con.execute(f"PRAGMA table_info('{table}')").fetchall()}
+        for column, kind in columns.items():
+            if column not in existing:
+                con.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {kind}")
 
 
 def stable_record_hash(record: HealthRecord) -> str:
@@ -101,37 +116,44 @@ def stable_record_hash(record: HealthRecord) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def upsert_records(con: duckdb.DuckDBPyConnection, records: list[HealthRecord]) -> int:
+def upsert_records(con: duckdb.DuckDBPyConnection, records: list[HealthRecord | Record]) -> int:
     if not records:
         return 0
 
-    rows = []
-    for r in records:
-        d = asdict(r)
-        rows.append(
-            (
-                d["type"],
-                d["start_at"],
-                d["end_at"],
-                d["creation_at"],
-                d["source_name"],
-                d["unit"],
-                d["value"],
-                d["value_str"],
-                stable_record_hash(r),
-            )
+    rows = [
+        (
+            r.record_type if isinstance(r, Record) else r.type,
+            _utc_timestamp(r.start_at), _utc_timestamp(r.end_at), _utc_timestamp(r.creation_at),
+            r.source_name, r.unit, r.value, r.value_str,
+            record_hash(r) if isinstance(r, Record) else stable_record_hash(r),
+            _dt_to_iso(r.start_at), _dt_to_iso(r.end_at), _dt_to_iso(r.creation_at),
+            r.device if isinstance(r, Record) else None,
+            r.source_version if isinstance(r, Record) else None,
         )
-
-    con.executemany(
-        """
-        INSERT INTO health_record(
-            type, start_at, end_at, creation_at, source_name, unit, value, value_str, record_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (record_hash) DO NOTHING
-        """,
-        rows,
-    )
+        for r in records
+    ]
+    batch = pd.DataFrame.from_records(rows, columns=[  # noqa: F841 (DuckDB replacement scan)
+        "type", "start_at", "end_at", "creation_at", "source_name", "unit", "value", "value_str",
+        "record_hash", "source_start", "source_end", "source_creation", "device", "source_version",
+    ])
+    con.execute("""
+        INSERT INTO health_record BY NAME SELECT * FROM batch
+        ON CONFLICT (record_hash) DO UPDATE SET
+          start_at = excluded.start_at, end_at = excluded.end_at, creation_at = excluded.creation_at,
+          source_start = excluded.source_start, source_end = excluded.source_end,
+          source_creation = excluded.source_creation, device = excluded.device,
+          source_version = excluded.source_version
+        WHERE health_record.source_start IS NULL
+           OR (health_record.device IS NULL AND excluded.device IS NOT NULL)
+           OR (health_record.source_version IS NULL AND excluded.source_version IS NOT NULL)
+        """)
     return len(rows)
+
+
+def _utc_timestamp(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.astimezone(UTC).replace(tzinfo=None).isoformat() if value.tzinfo else value.isoformat()
 
 
 def iter_records(con: duckdb.DuckDBPyConnection) -> Iterator[HealthRecord]:
@@ -166,38 +188,42 @@ def upsert_workouts(
     if not workouts and not metadata:
         return 0, 0
 
-    workout_rows = []
-    for w in workouts:
-        d = asdict(w)
-        workout_rows.append(
-            (
-                d["workout_activity_type"],
-                d["start_at"],
-                d["end_at"],
-                d["creation_at"],
-                d["source_name"],
-                d["device"],
-                d["duration_s"],
-                d["total_energy_kcal"],
-                d["total_distance_m"],
-                stable_workout_hash(w),
-            )
+    workout_rows = [
+        (
+            w.workout_activity_type, _utc_timestamp(w.start_at), _utc_timestamp(w.end_at),
+            _utc_timestamp(w.creation_at), w.source_name, w.device,
+            w.duration_s, w.total_energy_kcal, w.total_distance_m, stable_workout_hash(w),
+            _dt_to_iso(w.start_at) if w.units_known else None, _dt_to_iso(w.end_at),
+            _dt_to_iso(w.creation_at), w.duration_unit, w.energy_unit, w.distance_unit,
+            *_workout_quantities(w),
         )
-
-    workouts_inserted = 0
+        for w in workouts
+    ]
+    workouts_inserted = len(workout_rows)
     if workout_rows:
-        con.executemany(
-            """
-            INSERT INTO workout(
-                workout_activity_type, start_at, end_at, creation_at, source_name, device,
-                duration_s, total_energy_kcal, total_distance_m, workout_hash
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT (workout_hash) DO NOTHING
-            """,
-            workout_rows,
-        )
-        workouts_inserted = len(workout_rows)
-
+        batch = pd.DataFrame.from_records(workout_rows, columns=[  # noqa: F841 (DuckDB replacement scan)
+            "workout_activity_type", "start_at", "end_at", "creation_at", "source_name", "device",
+            "duration_s", "total_energy_kcal", "total_distance_m", "workout_hash",
+            "source_start", "source_end", "source_creation", "duration_unit", "energy_unit", "distance_unit",
+            "reported_hours", "reported_km", "reported_kcal", "reported_bpm",
+        ])
+        con.execute("""
+            INSERT INTO workout BY NAME SELECT * FROM batch
+            ON CONFLICT (workout_hash) DO UPDATE SET
+              start_at = excluded.start_at, end_at = excluded.end_at, creation_at = excluded.creation_at,
+              source_start = excluded.source_start, source_end = excluded.source_end,
+              source_creation = excluded.source_creation, duration_unit = excluded.duration_unit,
+              energy_unit = excluded.energy_unit, distance_unit = excluded.distance_unit,
+              reported_hours = COALESCE(excluded.reported_hours, workout.reported_hours),
+              reported_km = COALESCE(excluded.reported_km, workout.reported_km),
+              reported_kcal = COALESCE(excluded.reported_kcal, workout.reported_kcal),
+              reported_bpm = COALESCE(excluded.reported_bpm, workout.reported_bpm)
+            WHERE workout.source_start IS NULL
+               OR (workout.reported_hours IS NULL AND excluded.reported_hours IS NOT NULL)
+               OR (workout.reported_km IS NULL AND excluded.reported_km IS NOT NULL)
+               OR (workout.reported_kcal IS NULL AND excluded.reported_kcal IS NOT NULL)
+               OR (workout.reported_bpm IS NULL AND excluded.reported_bpm IS NOT NULL)
+            """)
     metadata_inserted = 0
     if metadata:
         meta_rows = [(m.workout_hash, m.key, m.value) for m in metadata]
@@ -212,6 +238,36 @@ def upsert_workouts(
         metadata_inserted = len(meta_rows)
 
     return workouts_inserted, metadata_inserted
+
+
+def _workout_quantities(workout: Workout) -> tuple[float | None, ...]:
+    def reported(value: float | None, unit: str | None, target: str) -> float | None:
+        if value is None or not isfinite(value) or value < 0:
+            return None
+        if unit == target:
+            return value
+        return next((value * scale + offset for origin, scale, offset in UNIT_CONVERSIONS.get(target, [])
+                     if origin == unit), None)
+
+    def statistic(kind: str, target: str) -> float | None:
+        compatible = {
+            converted for stat, unit, value in workout.statistics
+            if stat == f"HKQuantityTypeIdentifier{kind}"
+            and (converted := reported(_to_float(value), unit, target)) is not None
+        }
+        return next(iter(compatible)) if len(compatible) == 1 else None
+
+    minutes = reported(workout.duration_s, workout.duration_unit, "min")
+    km = reported(workout.total_distance_m, workout.distance_unit, "km")
+    kcal = reported(workout.total_energy_kcal, workout.energy_unit, "kcal")
+    if km is None:
+        distances = [value for kind in ("DistanceWalkingRunning", "DistanceCycling", "DistanceSwimming",
+                                       "DistanceDownhillSnowSports", "DistanceWheelchair")
+                     if (value := statistic(kind, "km")) is not None]
+        km = distances[0] if len(distances) == 1 else None
+    if kcal is None:
+        kcal = statistic("ActiveEnergyBurned", "kcal")
+    return (minutes / 60 if minutes is not None else None, km, kcal, statistic("HeartRate", "bpm"))
 
 
 def iter_workouts(con: duckdb.DuckDBPyConnection) -> Iterator[Workout]:
@@ -242,14 +298,8 @@ def upsert_record_metadata(con: duckdb.DuckDBPyConnection, metadata: list[tuple[
     if not metadata:
         return 0
 
-    con.executemany(
-        """
-        INSERT INTO record_metadata(record_hash, key, value)
-        VALUES (?, ?, ?)
-        ON CONFLICT (record_hash, key, value) DO NOTHING
-        """,
-        metadata,
-    )
+    batch = pd.DataFrame.from_records(metadata, columns=["record_hash", "key", "value"])  # noqa: F841
+    con.execute("INSERT INTO record_metadata BY NAME SELECT * FROM batch ON CONFLICT DO NOTHING")
     return len(metadata)
 
 
